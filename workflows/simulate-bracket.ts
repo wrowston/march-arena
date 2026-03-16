@@ -363,7 +363,7 @@ async function emitProgress(update: SimulationProgress): Promise<void> {
   const writable = getWritable<string>();
   const writer = writable.getWriter();
   await writer.write(JSON.stringify(update) + "\n");
-  await writer.close();
+  writer.releaseLock();
 }
 
 async function closeProgressStream(): Promise<void> {
