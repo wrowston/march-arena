@@ -1,8 +1,7 @@
 import type { SimulatedBracket, Team } from "@/lib/bracket-data";
 import { BRACKET_2026 } from "@/lib/bracket-data";
-import { getRedis } from "@/lib/redis";
-
-const LEADERBOARD_KEY = "leaderboard";
+import { getConvexClient } from "@/lib/convex";
+import { api } from "@/convex/_generated/api";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -69,10 +68,8 @@ export function extractTeamResults(
     w.games++;
     l.games++;
 
-    // Update furthest round for winner
     w.furthestRound = Math.max(w.furthestRound, roundLevel);
 
-    // Check for upset (higher seed number = lower seed = underdog)
     if (winner.seed > loser.seed) {
       w.upsetWins++;
       l.upsetLosses++;
@@ -134,52 +131,62 @@ export function extractTeamResults(
   return results;
 }
 
-// ── Save simulation results to Redis ───────────────────────────────
+// ── Convert TeamResult map to Convex-compatible increments ─────────
+
+export function teamResultsToIncrements(
+  teamResults: Map<number, TeamResult>
+): Array<{
+  teamId: number;
+  wins: number;
+  games: number;
+  upsetWins: number;
+  upsetLosses: number;
+  round32: number;
+  sweet16: number;
+  elite8: number;
+  finalFour: number;
+  championship: number;
+  champion: number;
+}> {
+  return Array.from(teamResults.entries()).map(([teamId, result]) => ({
+    teamId,
+    wins: result.wins,
+    games: result.games,
+    upsetWins: result.upsetWins,
+    upsetLosses: result.upsetLosses,
+    round32: result.furthestRound >= 1 ? 1 : 0,
+    sweet16: result.furthestRound >= 2 ? 1 : 0,
+    elite8: result.furthestRound >= 3 ? 1 : 0,
+    finalFour: result.furthestRound >= 4 ? 1 : 0,
+    championship: result.furthestRound >= 5 ? 1 : 0,
+    champion: result.furthestRound >= 6 ? 1 : 0,
+  }));
+}
+
+// ── Save simulation results to Convex ─────────────────────────────
 
 export async function saveSimulationResults(
   bracket: SimulatedBracket
 ): Promise<void> {
-  const redis = getRedis();
+  const client = getConvexClient();
   const teamResults = extractTeamResults(bracket);
-  const pipeline = redis.pipeline();
+  const teamIncrements = teamResultsToIncrements(teamResults);
 
-  pipeline.hincrby(LEADERBOARD_KEY, "total", 1);
-
-  for (const [teamId, result] of teamResults) {
-    const prefix = `${teamId}`;
-    pipeline.hincrby(LEADERBOARD_KEY, `${prefix}:w`, result.wins);
-    pipeline.hincrby(LEADERBOARD_KEY, `${prefix}:g`, result.games);
-    pipeline.hincrby(LEADERBOARD_KEY, `${prefix}:uw`, result.upsetWins);
-    pipeline.hincrby(LEADERBOARD_KEY, `${prefix}:ul`, result.upsetLosses);
-
-    if (result.furthestRound >= 1)
-      pipeline.hincrby(LEADERBOARD_KEY, `${prefix}:r32`, 1);
-    if (result.furthestRound >= 2)
-      pipeline.hincrby(LEADERBOARD_KEY, `${prefix}:s16`, 1);
-    if (result.furthestRound >= 3)
-      pipeline.hincrby(LEADERBOARD_KEY, `${prefix}:e8`, 1);
-    if (result.furthestRound >= 4)
-      pipeline.hincrby(LEADERBOARD_KEY, `${prefix}:ff`, 1);
-    if (result.furthestRound >= 5)
-      pipeline.hincrby(LEADERBOARD_KEY, `${prefix}:cg`, 1); // championship game
-    if (result.furthestRound >= 6)
-      pipeline.hincrby(LEADERBOARD_KEY, `${prefix}:ch`, 1); // champion
-  }
-
-  await pipeline.exec();
+  await client.mutation(api.leaderboard.recordResults, {
+    simulationCount: 1,
+    teamIncrements,
+  });
 }
 
-// ── Read leaderboard stats from Redis ──────────────────────────────
+// ── Read leaderboard stats from Convex ────────────────────────────
 
 export async function getLeaderboardStats(): Promise<LeaderboardData> {
-  const redis = getRedis();
-  const raw = await redis.hgetall(LEADERBOARD_KEY);
+  const client = getConvexClient();
+  const raw = await client.query(api.leaderboard.getLeaderboard);
 
-  if (!raw || Object.keys(raw).length === 0) {
+  if (raw.totalSimulations === 0 || raw.teams.length === 0) {
     return { totalSimulations: 0, teams: [] };
   }
-
-  const totalSimulations = parseInt(raw["total"] ?? "0", 10);
 
   const teamMeta = new Map<
     number,
@@ -216,39 +223,30 @@ export async function getLeaderboardStats(): Promise<LeaderboardData> {
     }
   }
 
-  // Parse per-team stats from Redis hash
-  const teams: TeamLeaderboardStats[] = [];
-  const seenIds = new Set<number>();
+  const teams: TeamLeaderboardStats[] = raw.teams
+    .map((t) => {
+      const meta = teamMeta.get(t.teamId);
+      if (!meta) return null;
 
-  for (const key of Object.keys(raw)) {
-    const match = key.match(/^(\d+):/);
-    if (!match) continue;
-    const teamId = parseInt(match[1], 10);
-    if (seenIds.has(teamId)) continue;
-    seenIds.add(teamId);
-
-    const meta = teamMeta.get(teamId);
-    if (!meta) continue;
-
-    const prefix = `${teamId}`;
-    teams.push({
-      teamId,
-      teamName: meta.name,
-      seed: meta.seed,
-      region: meta.region,
-      conference: meta.conference,
-      champion: parseInt(raw[`${prefix}:ch`] ?? "0", 10),
-      championship: parseInt(raw[`${prefix}:cg`] ?? "0", 10),
-      finalFour: parseInt(raw[`${prefix}:ff`] ?? "0", 10),
-      elite8: parseInt(raw[`${prefix}:e8`] ?? "0", 10),
-      sweet16: parseInt(raw[`${prefix}:s16`] ?? "0", 10),
-      round32: parseInt(raw[`${prefix}:r32`] ?? "0", 10),
-      totalWins: parseInt(raw[`${prefix}:w`] ?? "0", 10),
-      totalGames: parseInt(raw[`${prefix}:g`] ?? "0", 10),
-      upsetWins: parseInt(raw[`${prefix}:uw`] ?? "0", 10),
-      upsetLosses: parseInt(raw[`${prefix}:ul`] ?? "0", 10),
-    });
-  }
+      return {
+        teamId: t.teamId,
+        teamName: meta.name,
+        seed: meta.seed,
+        region: meta.region,
+        conference: meta.conference,
+        champion: t.champion,
+        championship: t.championship,
+        finalFour: t.finalFour,
+        elite8: t.elite8,
+        sweet16: t.sweet16,
+        round32: t.round32,
+        totalWins: t.wins,
+        totalGames: t.games,
+        upsetWins: t.upsetWins,
+        upsetLosses: t.upsetLosses,
+      };
+    })
+    .filter((t): t is TeamLeaderboardStats => t !== null);
 
   teams.sort(
     (a, b) =>
@@ -257,5 +255,5 @@ export async function getLeaderboardStats(): Promise<LeaderboardData> {
       a.teamId - b.teamId
   );
 
-  return { totalSimulations, teams };
+  return { totalSimulations: raw.totalSimulations, teams };
 }

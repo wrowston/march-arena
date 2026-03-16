@@ -1,16 +1,17 @@
 /**
- * Clear all leaderboard aggregates in Redis (seed data + user simulations).
- * Run after replacing seed simulations with real tracking, or before re-seeding.
+ * Clear all leaderboard data in Convex.
+ * Run before re-seeding or to start fresh.
  *
  * Usage:
  *   pnpm tsx scripts/reset-leaderboard.ts
  *
- * Requires REDIS_URL in .env.local
+ * Requires CONVEX_URL in .env.local
  */
 
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import Redis from "ioredis";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "../convex/_generated/api";
 
 const envPath = resolve(__dirname, "../.env.local");
 try {
@@ -37,21 +38,24 @@ try {
 }
 
 async function main() {
-  const redisUrl = process.env.REDIS_URL;
-  if (!redisUrl) {
-    console.error("REDIS_URL not found in .env.local");
+  const convexUrl = process.env.CONVEX_URL;
+  if (!convexUrl) {
+    console.error("CONVEX_URL not found in .env.local");
     process.exit(1);
   }
 
-  const redis = new Redis(redisUrl, { maxRetriesPerRequest: 3 });
-  const before = await redis.hget("leaderboard", "total");
-  const deleted = await redis.del("leaderboard");
-  console.log(
-    deleted
-      ? `Leaderboard reset. Removed key "leaderboard" (had total=${before ?? "0"} simulations).`
-      : 'Key "leaderboard" was already empty.'
-  );
-  await redis.quit();
+  const client = new ConvexHttpClient(convexUrl);
+
+  const before = await client.query(api.leaderboard.getLeaderboard);
+  const result = await client.mutation(api.leaderboard.resetLeaderboard);
+
+  if (result.deletedTeams > 0 || before.totalSimulations > 0) {
+    console.log(
+      `Leaderboard reset. Removed ${result.deletedTeams} team records (had total=${before.totalSimulations} simulations).`
+    );
+  } else {
+    console.log("Leaderboard was already empty.");
+  }
 }
 
 main().catch((e) => {

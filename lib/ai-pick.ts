@@ -1,5 +1,5 @@
-import { anthropic } from "@ai-sdk/anthropic";
-import { generateText, jsonSchema, Output } from "ai";
+import { generateText } from "ai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
   formatVenueLine,
   getFirstSecondRoundVenueForGameId,
@@ -15,7 +15,12 @@ import { FIRST_FOUR_SLOTS } from "@/lib/simulation-shared";
 import { getMatchupKey, SEED_MATCHUP_STATS } from "@/lib/tournament-context";
 import { generateMatchupAnalysis } from "@/lib/win-probability";
 
-export const MODEL = anthropic("claude-haiku-4-5");
+const openrouter = createOpenRouter({
+  apiKey: process.env.OPENROUTER_API_KEY,
+});
+
+export const MODEL_ID = "x-ai/grok-4.1-fast";
+export const MODEL = openrouter(MODEL_ID);
 
 export const ROUND_NAMES = [
   "Round of 64",
@@ -53,16 +58,22 @@ type GamePick = {
   reasoning: string;
 };
 
-const GAME_PICK_SCHEMA = jsonSchema<GamePick>({
-  $schema: "http://json-schema.org/draft-07/schema#",
-  type: "object",
-  properties: {
-    winner: { type: "string", enum: ["1", "2"] },
-    reasoning: { type: "string" },
-  },
-  required: ["winner", "reasoning"],
-  additionalProperties: false,
-});
+function parseGamePick(text: string): GamePick {
+  const match = text.match(/\{[\s\S]*?\}/);
+  if (!match) {
+    throw new Error(`No JSON object found in response: ${text.slice(0, 200)}`);
+  }
+  const parsed = JSON.parse(match[0]);
+  if (
+    (parsed.winner !== "1" && parsed.winner !== "2") ||
+    typeof parsed.reasoning !== "string"
+  ) {
+    throw new Error(
+      `Invalid GamePick shape: ${JSON.stringify(parsed).slice(0, 200)}`
+    );
+  }
+  return { winner: parsed.winner, reasoning: parsed.reasoning };
+}
 
 // ── Team / venue data ───────────────────────────────────────────────
 
@@ -525,9 +536,8 @@ export function buildEnhancedPrompt(game: Game, context: GameContext): string {
     }
   }
 
-  prompt += `\nReturn JSON with:\n`;
-  prompt += `- winner: "1" or "2"\n`;
-  prompt += `- reasoning: 1-2 sentences explaining your pick like an analyst on TV\n`;
+  prompt += `\nRespond with ONLY a JSON object — no extra text, no explanation outside the JSON, no markdown fences:\n`;
+  prompt += `{"winner": "1" or "2", "reasoning": "1-2 sentences explaining your pick like an analyst on TV"}\n`;
   prompt += `Mapping: 1 = ${game.team1.name} (${game.team1.seed} seed) | 2 = ${game.team2.name} (${game.team2.seed} seed)\n`;
 
   return prompt;
@@ -631,29 +641,41 @@ export async function simulateGameWithAI(
   );
   console.log(`${"=".repeat(80)}`);
 
-  const result = await generateText({
-    model: MODEL,
-    prompt,
-    temperature: 0.7,
-    output: Output.object({
-      schema: GAME_PICK_SCHEMA,
-      name: "gameResult",
-      description: "Winner selection with brief reasoning.",
-    }),
-  });
+  const MAX_RETRIES = 3;
+  let lastError: unknown;
 
-  const winner: 1 | 2 = result.output.winner === "1" ? 1 : 2;
-  const winnerTeam = winner === 1 ? game.team1 : game.team2;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const result = await generateText({
+        model: MODEL,
+        prompt,
+        temperature: 0.7,
+      });
 
-  console.log(`RESULT: ${winnerTeam.name} (#${winnerTeam.seed}) wins`);
-  console.log(`REASONING: ${result.output.reasoning}`);
+      const pick = parseGamePick(result.text);
+      const winner: 1 | 2 = pick.winner === "1" ? 1 : 2;
+      const winnerTeam = winner === 1 ? game.team1 : game.team2;
 
-  return {
-    ...game,
-    status: "final",
-    winner,
-    reasoning: result.output.reasoning,
-  };
+      console.log(`RESULT: ${winnerTeam.name} (#${winnerTeam.seed}) wins`);
+      console.log(`REASONING: ${pick.reasoning}`);
+
+      return {
+        ...game,
+        status: "final" as const,
+        winner,
+        reasoning: pick.reasoning,
+      };
+    } catch (e) {
+      lastError = e;
+      if (attempt < MAX_RETRIES) {
+        console.warn(
+          `Attempt ${attempt}/${MAX_RETRIES} failed for ${game.team1.name} vs ${game.team2.name}, retrying...`
+        );
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 // ── Full bracket simulation (no workflow) ───────────────────────────
@@ -819,7 +841,7 @@ export async function simulateBracketLocally(
     )
   );
 
-  // 5. Final Four (2026 NCAA): East(1) vs South(0), West(2) vs Midwest(3)
+  // 5. Final Four: East(1) vs South(0), West(2) vs Midwest(3)
   const finalFourGames: Game[] = [
     {
       id: "ff-east-south",
