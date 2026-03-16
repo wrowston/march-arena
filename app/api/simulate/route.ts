@@ -6,7 +6,7 @@ import type { SimulatedBracket } from "@/lib/bracket-data";
 import { saveSimulationResults } from "@/lib/leaderboard";
 import { SIMULATE_TEMPORARILY_DISABLED } from "@/lib/simulate-gate";
 
-export const maxDuration = 500;
+export const maxDuration = 300;
 
 const RATE_LIMIT_ID = "update-object";
 
