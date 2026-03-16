@@ -2,12 +2,12 @@
  * Run N full AI bracket simulations locally (no workflow, no API).
  *
  * Calls Gemini directly for each game pick and saves completed brackets to
- * Redis. Each invocation runs brackets serially; launch multiple processes
+ * Convex. Each invocation runs brackets serially; launch multiple processes
  * in separate terminals for parallelism.
  *
  * Prerequisites:
- *   1. GOOGLE_GENERATIVE_AI_API_KEY (or equivalent) in .env.local.
- *   2. REDIS_URL in .env.local (for leaderboard persistence).
+ *   1. OPENROUTER_API_KEY in .env.local.
+ *   2. CONVEX_URL in .env.local (for leaderboard persistence).
  *
  * Usage:
  *   pnpm ai-sim-batch --count 10
@@ -70,9 +70,9 @@ async function main() {
 
   console.log(`AI simulation batch (local, no workflow)`);
   console.log(`  Total runs:  ${count}`);
-  console.log(`  Model:       google/gemini-3-flash`);
-  console.log(`  Redis:       ${process.env.REDIS_URL ? "configured" : "NOT SET — results won't persist"}`);
-  console.log(`\nEach run simulates a full 67-game bracket via Gemini.\n`);
+  console.log(`  Model:       anthropic/claude-3.5-haiku (via OpenRouter)`);
+  console.log(`  Convex:      ${process.env.CONVEX_URL ? "configured" : "NOT SET — results won't persist"}`);
+  console.log(`\nEach run simulates a full 67-game bracket via OpenRouter.\n`);
 
   let completed = 0;
   let failed = 0;

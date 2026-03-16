@@ -4,12 +4,13 @@
  * Usage:
  *   pnpm tsx scripts/seed-leaderboard.ts [count]
  *
- * Requires REDIS_URL in .env.local (loaded via dotenv inline).
+ * Requires CONVEX_URL in .env.local (loaded via dotenv inline).
  */
 
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import Redis from "ioredis";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "../convex/_generated/api";
 
 // ── Load .env.local manually (no Next.js runtime) ─────────────────
 
@@ -23,7 +24,6 @@ try {
     if (eqIdx === -1) continue;
     const key = trimmed.slice(0, eqIdx).trim();
     let value = trimmed.slice(eqIdx + 1).trim();
-    // Strip surrounding quotes
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
@@ -80,7 +80,6 @@ const SEED_WIN_RATES: Record<string, number> = {
   "8v9": 0.48,
 };
 
-// Team tier bonuses for later rounds
 const TIER_BONUS: Record<string, number> = {
   blueblood: 0.06,
   power: 0.02,
@@ -94,26 +93,18 @@ function getMatchupKey(seed1: number, seed2: number): string {
   return `${higher}v${lower}`;
 }
 
-/**
- * Calculate win probability for team1 vs team2.
- * Uses historical seed matchup data + team tier adjustments.
- * For later-round matchups without historical data, uses seed difference.
- */
 function winProbability(team1: Team, team2: Team, roundIdx: number): number {
   const key = getMatchupKey(team1.seed, team2.seed);
   const baseRate = SEED_WIN_RATES[key];
 
   if (baseRate !== undefined) {
-    // baseRate is the probability that the higher seed wins
     const team1IsHigherSeed = team1.seed <= team2.seed;
     let prob = team1IsHigherSeed ? baseRate : 1 - baseRate;
 
-    // Apply tier bonuses
     const t1Bonus = TIER_BONUS[team1.teamTier ?? ""] ?? 0;
     const t2Bonus = TIER_BONUS[team2.teamTier ?? ""] ?? 0;
     prob += t1Bonus - t2Bonus;
 
-    // Later rounds: experience matters more
     if (roundIdx >= 2) {
       prob += (t1Bonus - t2Bonus) * 0.5;
     }
@@ -121,11 +112,9 @@ function winProbability(team1: Team, team2: Team, roundIdx: number): number {
     return Math.max(0.05, Math.min(0.95, prob));
   }
 
-  // Later round matchup: use seed-based probability with diminishing effect
-  const seedDiff = team2.seed - team1.seed; // positive = team1 is higher seed
-  let prob = 0.5 + seedDiff * 0.02; // slight edge per seed difference
+  const seedDiff = team2.seed - team1.seed;
+  let prob = 0.5 + seedDiff * 0.02;
 
-  // Tier adjustments matter more in later rounds
   const t1Bonus = TIER_BONUS[team1.teamTier ?? ""] ?? 0;
   const t2Bonus = TIER_BONUS[team2.teamTier ?? ""] ?? 0;
   prob += (t1Bonus - t2Bonus) * (1 + roundIdx * 0.3);
@@ -134,6 +123,19 @@ function winProbability(team1: Team, team2: Team, roundIdx: number): number {
 }
 
 // ── Simulate one full tournament ───────────────────────────────────
+
+interface TeamResultData {
+  wins: number;
+  games: number;
+  upsetWins: number;
+  upsetLosses: number;
+  furthestRound: number;
+}
+
+interface SimResult {
+  teamResults: Map<number, TeamResultData>;
+  champion: Team | null;
+}
 
 function simulateOnce(bracket: Bracket): SimResult {
   const teamResults = new Map<number, TeamResultData>();
@@ -196,7 +198,6 @@ function simulateOnce(bracket: Bracket): SimResult {
     }
   }
 
-  // Build Round of 64 with First Four winners injected
   const regionTeams: Team[][][] = bracket.regions.map((region, regionIdx) => {
     const games: [Team, Team][] = region.rounds[0].map((g) => [
       { ...g.team1 },
@@ -216,7 +217,6 @@ function simulateOnce(bracket: Bracket): SimResult {
     return games;
   });
 
-  // Simulate region rounds
   const regionWinners: Team[] = [];
   for (let regionIdx = 0; regionIdx < 4; regionIdx++) {
     let currentMatchups = regionTeams[regionIdx];
@@ -233,7 +233,6 @@ function simulateOnce(bracket: Bracket): SimResult {
         }
       }
 
-      // Pair winners for next round
       for (let i = 0; i < winners.length; i += 2) {
         if (i + 1 < winners.length) {
           nextMatchups.push([winners[i], winners[i + 1]]);
@@ -247,7 +246,6 @@ function simulateOnce(bracket: Bracket): SimResult {
     }
   }
 
-  // Final Four: South(0) vs West(2), East(1) vs Midwest(3)
   let champion: Team | null = null;
   if (regionWinners.length === 4) {
     const { winner: ff1Winner } = playGame(
@@ -261,7 +259,6 @@ function simulateOnce(bracket: Bracket): SimResult {
       5
     );
 
-    // Championship
     const { winner: champ } = playGame(ff1Winner, ff2Winner, 6);
     champion = champ;
   }
@@ -269,35 +266,71 @@ function simulateOnce(bracket: Bracket): SimResult {
   return { teamResults, champion };
 }
 
-interface TeamResultData {
+// ── Accumulate results across multiple simulations ─────────────────
+
+interface AccumulatedTeamStats {
   wins: number;
   games: number;
   upsetWins: number;
   upsetLosses: number;
-  furthestRound: number;
+  round32: number;
+  sweet16: number;
+  elite8: number;
+  finalFour: number;
+  championship: number;
+  champion: number;
 }
 
-interface SimResult {
-  teamResults: Map<number, TeamResultData>;
-  champion: Team | null;
+function accumulateResults(
+  accumulated: Map<number, AccumulatedTeamStats>,
+  simResult: SimResult
+) {
+  for (const [teamId, result] of simResult.teamResults) {
+    const existing = accumulated.get(teamId);
+    if (existing) {
+      existing.wins += result.wins;
+      existing.games += result.games;
+      existing.upsetWins += result.upsetWins;
+      existing.upsetLosses += result.upsetLosses;
+      if (result.furthestRound >= 1) existing.round32++;
+      if (result.furthestRound >= 2) existing.sweet16++;
+      if (result.furthestRound >= 3) existing.elite8++;
+      if (result.furthestRound >= 4) existing.finalFour++;
+      if (result.furthestRound >= 5) existing.championship++;
+      if (result.furthestRound >= 6) existing.champion++;
+    } else {
+      accumulated.set(teamId, {
+        wins: result.wins,
+        games: result.games,
+        upsetWins: result.upsetWins,
+        upsetLosses: result.upsetLosses,
+        round32: result.furthestRound >= 1 ? 1 : 0,
+        sweet16: result.furthestRound >= 2 ? 1 : 0,
+        elite8: result.furthestRound >= 3 ? 1 : 0,
+        finalFour: result.furthestRound >= 4 ? 1 : 0,
+        championship: result.furthestRound >= 5 ? 1 : 0,
+        champion: result.furthestRound >= 6 ? 1 : 0,
+      });
+    }
+  }
 }
 
-// ── Main: run simulations and write to Redis ───────────────────────
+// ── Main: run simulations and write to Convex ──────────────────────
 
 async function main() {
   const count = parseInt(process.argv[2] ?? "5000", 10);
-  const redisUrl = process.env.REDIS_URL;
+  const convexUrl = process.env.CONVEX_URL;
 
-  if (!redisUrl) {
-    console.error("REDIS_URL not found in .env.local");
+  if (!convexUrl) {
+    console.error("CONVEX_URL not found in .env.local");
     process.exit(1);
   }
 
-  const redis = new Redis(redisUrl, { maxRetriesPerRequest: 3 });
-  console.log(`Connected to Redis. Running ${count} simulations...`);
+  const client = new ConvexHttpClient(convexUrl);
+  console.log(`Connected to Convex. Running ${count} simulations...`);
 
-  // Clear existing leaderboard data
-  await redis.del("leaderboard");
+  // Reset existing leaderboard data
+  await client.mutation(api.leaderboard.resetLeaderboard);
 
   const bracketModule = await import("../lib/bracket-data");
   const bracket = bracketModule.BRACKET_2026 as unknown as Bracket;
@@ -307,36 +340,22 @@ async function main() {
 
   for (let batch = 0; batch < count; batch += BATCH_SIZE) {
     const batchCount = Math.min(BATCH_SIZE, count - batch);
-    const pipeline = redis.pipeline();
+    const accumulated = new Map<number, AccumulatedTeamStats>();
 
     for (let i = 0; i < batchCount; i++) {
-      const { teamResults } = simulateOnce(bracket);
-
-      pipeline.hincrby("leaderboard", "total", 1);
-
-      for (const [teamId, result] of teamResults) {
-        const p = `${teamId}`;
-        pipeline.hincrby("leaderboard", `${p}:w`, result.wins);
-        pipeline.hincrby("leaderboard", `${p}:g`, result.games);
-        pipeline.hincrby("leaderboard", `${p}:uw`, result.upsetWins);
-        pipeline.hincrby("leaderboard", `${p}:ul`, result.upsetLosses);
-
-        if (result.furthestRound >= 1)
-          pipeline.hincrby("leaderboard", `${p}:r32`, 1);
-        if (result.furthestRound >= 2)
-          pipeline.hincrby("leaderboard", `${p}:s16`, 1);
-        if (result.furthestRound >= 3)
-          pipeline.hincrby("leaderboard", `${p}:e8`, 1);
-        if (result.furthestRound >= 4)
-          pipeline.hincrby("leaderboard", `${p}:ff`, 1);
-        if (result.furthestRound >= 5)
-          pipeline.hincrby("leaderboard", `${p}:cg`, 1);
-        if (result.furthestRound >= 6)
-          pipeline.hincrby("leaderboard", `${p}:ch`, 1);
-      }
+      const simResult = simulateOnce(bracket);
+      accumulateResults(accumulated, simResult);
     }
 
-    await pipeline.exec();
+    const teamIncrements = Array.from(accumulated.entries()).map(
+      ([teamId, stats]) => ({ teamId, ...stats })
+    );
+
+    await client.mutation(api.leaderboard.recordResults, {
+      simulationCount: batchCount,
+      teamIncrements,
+    });
+
     completed += batchCount;
     const pct = Math.round((completed / count) * 100);
     process.stdout.write(`\r  Progress: ${completed}/${count} (${pct}%)`);
@@ -344,17 +363,8 @@ async function main() {
 
   console.log("\n  Done! Verifying...");
 
-  // Quick verification
-  const total = await redis.hget("leaderboard", "total");
-  console.log(`  Total simulations in Redis: ${total}`);
-
-  // Show top 10
-  const allData = await redis.hgetall("leaderboard");
-  const teamIds = new Set<number>();
-  for (const key of Object.keys(allData)) {
-    const match = key.match(/^(\d+):/);
-    if (match) teamIds.add(parseInt(match[1], 10));
-  }
+  const data = await client.query(api.leaderboard.getLeaderboard);
+  console.log(`  Total simulations in Convex: ${data.totalSimulations}`);
 
   // Build team name lookup from bracket
   const teamNames = new Map<number, { name: string; seed: number }>();
@@ -374,13 +384,13 @@ async function main() {
   }
 
   const rankings: Array<{ name: string; seed: number; champ: number }> = [];
-  for (const teamId of teamIds) {
-    const meta = teamNames.get(teamId);
+  for (const t of data.teams) {
+    const meta = teamNames.get(t.teamId);
     if (!meta) continue;
     rankings.push({
       name: meta.name,
       seed: meta.seed,
-      champ: parseInt(allData[`${teamId}:ch`] ?? "0", 10),
+      champ: t.champion,
     });
   }
   rankings.sort((a, b) => b.champ - a.champ);
@@ -389,13 +399,12 @@ async function main() {
   console.log("  ─────────────────────────────────");
   for (let i = 0; i < Math.min(10, rankings.length); i++) {
     const r = rankings[i];
-    const pct = ((r.champ / parseInt(total!, 10)) * 100).toFixed(1);
+    const pct = ((r.champ / data.totalSimulations) * 100).toFixed(1);
     console.log(
       `  ${String(i + 1).padStart(2)}. (${r.seed}) ${r.name.padEnd(20)} ${pct}% (${r.champ})`
     );
   }
 
-  await redis.quit();
   process.exit(0);
 }
 
