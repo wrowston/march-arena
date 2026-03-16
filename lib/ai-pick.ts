@@ -19,7 +19,8 @@ const openrouter = createOpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-export const MODEL_ID = "x-ai/grok-4.1-fast";
+// export const MODEL_ID = "x-ai/grok-4.1-fast";
+export const MODEL_ID = "google/gemini-3.1-flash-lite-preview";
 export const MODEL = openrouter(MODEL_ID);
 
 export const ROUND_NAMES = [

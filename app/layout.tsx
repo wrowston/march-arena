@@ -88,6 +88,12 @@ export default function RootLayout({
                 Leaderboard
               </Link>
               <Link
+                href="/survivor"
+                className="text-[13px] text-[#6c6e6f] hover:text-[#121213] transition-colors"
+              >
+                Survivor
+              </Link>
+              <Link
                 href="/about"
                 className="text-[13px] text-[#6c6e6f] hover:text-[#121213] transition-colors"
               >

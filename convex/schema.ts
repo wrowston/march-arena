@@ -19,4 +19,27 @@ export default defineSchema({
     championship: v.number(),
     champion: v.number(),
   }).index("by_teamId", ["teamId"]),
+
+  survivorRuns: defineTable({
+    picks: v.array(
+      v.object({
+        day: v.number(),
+        teamName: v.string(),
+        teamId: v.number(),
+        teamSeed: v.number(),
+        opponentName: v.string(),
+        winProb: v.number(),
+      })
+    ),
+    overallSurvivalProb: v.number(),
+    createdAt: v.number(),
+  }),
+
+  survivorPickStats: defineTable({
+    day: v.number(),
+    teamName: v.string(),
+    teamId: v.number(),
+    teamSeed: v.number(),
+    pickCount: v.number(),
+  }).index("by_day_team", ["day", "teamName"]),
 });
