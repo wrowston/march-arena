@@ -296,7 +296,7 @@ const TEAM_METADATA: Record<string, TeamMetadata> = {
   UCLA: { conference: "Big Ten", teamTier: "blueblood", fanBaseStrength: "elite" },
   Houston: { conference: "Big 12", teamTier: "power", fanBaseStrength: "strong" },
   "Virginia Tech": { conference: "ACC", teamTier: "power", fanBaseStrength: "strong" },
-  "Iowa State": { conference: "Big 12", teamTier: "power", fanBaseStrength: "elite" },
+  "Iowa State": { conference: "Big 12", teamTier: "power", fanBaseStrength: "strong" },
   "Ole Miss": { conference: "SEC", teamTier: "power", fanBaseStrength: "average" },
   "Utah State": { conference: "Mountain West", teamTier: "mid-major", fanBaseStrength: "strong" },
   SMU: { conference: "ACC", teamTier: "power", fanBaseStrength: "average" },

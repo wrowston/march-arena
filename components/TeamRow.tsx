@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import type { Team } from "@/lib/bracket-data";
 import { getTeamLogoUrl } from "@/lib/bracket-data";
 
@@ -53,13 +52,11 @@ export function TeamRow({
           ) : showPlaceholder ? (
             <div className="w-full h-full rounded bg-[#b5b7b7]" />
           ) : (
-            <Image
+            <img
               src={getTeamLogoUrl(team.id, logoSrcSize)}
               alt={team.name}
               width={logoSrcSize}
               height={logoSrcSize}
-              quality={90}
-              sizes={compact ? "14px" : "18px"}
               className="object-contain w-full h-full"
               onError={() => setLogoError(true)}
             />

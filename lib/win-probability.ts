@@ -48,12 +48,28 @@ function winPct(stats: TeamStats): number {
 }
 
 /**
+ * Luck adjustment factor.
+ *
+ * Teams with high luck ratings have overperformed their underlying quality
+ * (close-game wins, etc.) and are likely to regress. This nudges the
+ * probability toward the opponent. The magnitude is capped so luck alone
+ * can't swing a game more than ~5 percentage points.
+ */
+function luckAdjustment(stats1: TeamStats, stats2: TeamStats): number {
+  const luckDiff = stats1.luck - stats2.luck;
+  // Negative luckDiff means team1 is less lucky (undervalued) → positive nudge
+  // Scale: 0.05 luck difference ≈ 1.5pp shift
+  return -luckDiff * 0.3;
+}
+
+/**
  * Ensemble Win Probability
  *
- * Combines all three models with weights reflecting their predictive power:
+ * Combines multiple models with weights reflecting their predictive power:
  * - KenPom logistic (60%): Most predictive single-game model
- * - Log5 from record (25%): Captures overall team quality
- * - Seed-based (15%): Accounts for committee seeding intelligence
+ * - Log5 from record (20%): Captures overall team quality
+ * - Seed-based (10%): Accounts for committee seeding intelligence
+ * - Luck adjustment (10%): Penalizes overperforming teams, rewards unlucky ones
  *
  * Returns probability that team1 wins.
  */
@@ -61,15 +77,15 @@ export function ensembleWinProbability(team1: Team, team2: Team): number {
   const stats1 = team1.stats;
   const stats2 = team2.stats;
 
-  // If both teams have KenPom stats, use full ensemble
   if (stats1 && stats2) {
     const pKenpom = kenpomWinProbability(stats1, stats2);
     const pLog5 = log5WinProbability(winPct(stats1), winPct(stats2));
     const pSeed = seedWinProbability(team1.seed, team2.seed);
-    return 0.60 * pKenpom + 0.25 * pLog5 + 0.15 * pSeed;
+    const luckAdj = luckAdjustment(stats1, stats2);
+    const raw = 0.60 * pKenpom + 0.20 * pLog5 + 0.10 * pSeed + 0.10 * (0.5 + luckAdj);
+    return Math.max(0.02, Math.min(0.98, raw));
   }
 
-  // Fallback to seed-based only
   return seedWinProbability(team1.seed, team2.seed);
 }
 
@@ -124,15 +140,15 @@ export function generateMatchupAnalysis(team1: Team, team2: Team): string {
   // Matchup insights — tournament-relevant factors
   const insights: string[] = [];
 
-  // Defense wins in March
-  if (stats1.adjDRank <= 25) {
+  // Defense — only highlight truly elite defenses, not just good ones
+  if (stats1.adjDRank <= 10) {
     insights.push(
-      `${team1.name} has a tournament-caliber defense (#${stats1.adjDRank}) — elite defenses consistently outperform their seed in March`
+      `${team1.name} has an elite defense (#${stats1.adjDRank}) — top-10 defenses have a modest edge in single-elimination`
     );
   }
-  if (stats2.adjDRank <= 25) {
+  if (stats2.adjDRank <= 10) {
     insights.push(
-      `${team2.name} has a tournament-caliber defense (#${stats2.adjDRank}) — elite defenses consistently outperform their seed in March`
+      `${team2.name} has an elite defense (#${stats2.adjDRank}) — top-10 defenses have a modest edge in single-elimination`
     );
   }
 

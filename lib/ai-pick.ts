@@ -357,19 +357,56 @@ export function buildEnhancedPrompt(game: Game, context: GameContext): string {
       game.team1.seed <= game.team2.seed ? stats1 : stats2;
     const lowerSeedStats =
       game.team1.seed > game.team2.seed ? stats1 : stats2;
+
+    // AdjEM gap — the single most predictive metric for game outcomes
+    const emGap = higherSeedStats.adjEM - lowerSeedStats.adjEM;
+    if (emGap >= 8) {
+      factors.push(
+        `CHALK INDICATOR: ${higherSeed.name} has a commanding AdjEM advantage (+${emGap.toFixed(1)} gap) — this is a dominant efficiency edge that wins ~75%+ of the time`
+      );
+    } else if (emGap >= 4) {
+      factors.push(
+        `${higherSeed.name} has a meaningful AdjEM edge (+${emGap.toFixed(1)} gap) — roughly a 65/35 game in their favor`
+      );
+    }
+
     if (lowerSeedStats.kenpomRank < higherSeedStats.kenpomRank) {
       factors.push(
         `UPSET INDICATOR: ${lowerSeed.name} (KenPom #${lowerSeedStats.kenpomRank}) is ranked HIGHER in KenPom than ${higherSeed.name} (KenPom #${higherSeedStats.kenpomRank}) -- the underdog may actually be the better team`
       );
     }
-    if (higherSeedStats.luck > 0.05) {
+
+    // Luck penalties — apply to BOTH teams
+    if (higherSeedStats.luck > 0.04) {
       factors.push(
         `UPSET INDICATOR: ${higherSeed.name} has been lucky (${higherSeedStats.luck > 0 ? "+" : ""}${higherSeedStats.luck.toFixed(3)}) -- their record may overstate their quality`
       );
     }
+    if (lowerSeedStats.luck > 0.04) {
+      factors.push(
+        `CHALK INDICATOR: ${lowerSeed.name} has also been lucky (${lowerSeedStats.luck > 0 ? "+" : ""}${lowerSeedStats.luck.toFixed(3)}) -- their quality may not be as strong as their record suggests, making the upset less likely`
+      );
+    }
+    // Unlucky teams are undervalued
+    if (higherSeedStats.luck < -0.04) {
+      factors.push(
+        `CHALK INDICATOR: ${higherSeed.name} has been unlucky (${higherSeedStats.luck.toFixed(3)}) -- they are likely BETTER than their record/seed indicates`
+      );
+    }
+    if (lowerSeedStats.luck < -0.04) {
+      factors.push(
+        `UPSET INDICATOR: ${lowerSeed.name} has been unlucky (${lowerSeedStats.luck.toFixed(3)}) -- they are likely better than their record/seed indicates`
+      );
+    }
+
     if (lowerSeedStats.sosEM > higherSeedStats.sosEM + 3) {
       factors.push(
         `UPSET INDICATOR: ${lowerSeed.name} played a significantly tougher schedule (SOS ${lowerSeedStats.sosEM > 0 ? "+" : ""}${lowerSeedStats.sosEM.toFixed(1)} vs ${higherSeedStats.sosEM > 0 ? "+" : ""}${higherSeedStats.sosEM.toFixed(1)})`
+      );
+    }
+    if (higherSeedStats.sosEM > lowerSeedStats.sosEM + 3) {
+      factors.push(
+        `CHALK INDICATOR: ${higherSeed.name} played a significantly tougher schedule (SOS ${higherSeedStats.sosEM > 0 ? "+" : ""}${higherSeedStats.sosEM.toFixed(1)} vs ${lowerSeedStats.sosEM > 0 ? "+" : ""}${lowerSeedStats.sosEM.toFixed(1)})`
       );
     }
     if (lowerSeedStats.adjDRank <= 15 && higherSeedStats.adjDRank > 25) {
@@ -469,14 +506,14 @@ export function buildEnhancedPrompt(game: Game, context: GameContext): string {
   }
 
   prompt += `YOUR PICK:\n`;
-  prompt += `Analyze this like a March Madness expert filling out a bracket to WIN A POOL (picking all chalk never wins). Weigh these factors:\n`;
-  prompt += `- DEFENSE WINS IN MARCH: Elite defenses (AdjD top 25) consistently outperform their seed — they grind out close games and limit opponent runs\n`;
-  prompt += `- TEMPO CONTROL: Teams that dictate pace have a single-elimination edge — slow, disciplined teams can frustrate faster, more talented opponents\n`;
-  prompt += `- STYLE MATCHUP > OVERALL RATING: A great offense vs. a great defense is a genuine toss-up regardless of seed or overall KenPom rank\n`;
-  prompt += `- TOURNAMENT DNA: Bluebloods and programs with deep NCAA Tournament history handle pressure and close games better\n`;
-  prompt += `- LUCK REGRESSION: Teams with high luck ratings (>0.05) have overperformed their underlying quality and are due for regression\n`;
-  prompt += `- STRENGTH OF SCHEDULE: Teams battle-tested against top competition (high SOS) are more prepared for tournament intensity\n`;
-  prompt += `- A 5-point AdjEM gap only translates to roughly a 65/35 game — the underdog wins 1 in 3. Don't treat small gaps as certainties.\n`;
+  prompt += `Analyze this like a March Madness expert filling out a bracket to WIN A POOL (picking all chalk never wins). Weigh these factors IN ORDER OF IMPORTANCE:\n`;
+  prompt += `- EFFICIENCY MARGIN (most predictive): AdjEM is the best single predictor. A 5-point AdjEM gap = ~65/35 game. A 10+ point gap = ~75/25. Respect large gaps — they exist for a reason.\n`;
+  prompt += `- LUCK REGRESSION: Teams with high luck ratings (>0.04) have overperformed their underlying quality and are due for regression. Teams with negative luck are UNDERVALUED — they're better than their record.\n`;
+  prompt += `- STRENGTH OF SCHEDULE: Teams battle-tested against top competition (high SOS) handle tournament pressure better. Weak-SOS teams may be paper tigers.\n`;
+  prompt += `- DEFENSE IN MARCH: Elite defenses (AdjD top 15) have a modest edge in single-elimination — but defense alone doesn't overcome large AdjEM gaps.\n`;
+  prompt += `- STYLE MATCHUP: A great offense vs. a great defense is a genuine toss-up regardless of seed or overall KenPom rank.\n`;
+  prompt += `- TOURNAMENT DNA: Bluebloods handle pressure and close games better, but this is a tiebreaker, not a primary factor.\n`;
+  prompt += `- TEMPO CONTROL: Slow, disciplined teams can frustrate faster opponents, but tempo is already captured in efficiency metrics.\n`;
 
   if (tourneyCtx && tourneyCtx.gamesPlayed > 4) {
     const expected = getExpectedUpsets(tourneyCtx.gamesPlayed);
