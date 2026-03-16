@@ -518,9 +518,9 @@ export const BRACKET_2026: Bracket = {
   schedule: SCHEDULE_2026,
   firstFour: [
     scheduledGame("ff1", team("UMBC", 16), team("Howard", 16)),
-    scheduledGame("ff2", team("Texas", 11), team("NC State", 11)),
+    scheduledGame("ff2", team("Miami OH", 11), team("SMU", 11)),
     scheduledGame("ff3", team("Prairie View", 16), team("Lehigh", 16)),
-    scheduledGame("ff4", team("Miami OH", 11), team("SMU", 11)),
+    scheduledGame("ff4", team("Texas", 11), team("NC State", 11)),
   ],
   regions: [
     {
@@ -580,7 +580,7 @@ export const BRACKET_2026: Bracket = {
           scheduledGame("w2", team("Villanova", 8), team("Utah State", 9)),
           scheduledGame("w3", team("Wisconsin", 5), team("High Point", 12)),
           scheduledGame("w4", team("Arkansas", 4), team("Hawaii", 13)),
-          scheduledGame("w5", team("BYU", 6), team("Miami OH", 11)),
+          scheduledGame("w5", team("BYU", 6), team("Texas", 11)),
           scheduledGame("w6", team("Gonzaga", 3), team("Kennesaw St", 14)),
           scheduledGame("w7", team("Miami FL", 7), team("Missouri", 10)),
           scheduledGame("w8", team("Purdue", 2), team("Queens", 15)),
@@ -604,7 +604,7 @@ export const BRACKET_2026: Bracket = {
           scheduledGame("m2", team("Georgia", 8), team("Saint Louis", 9)),
           scheduledGame("m3", team("Texas Tech", 5), team("Akron", 12)),
           scheduledGame("m4", team("Alabama", 4), team("Hofstra", 13)),
-          scheduledGame("m5", team("Tennessee", 6), team("Texas", 11)),
+          scheduledGame("m5", team("Tennessee", 6), team("SMU", 11)),
           scheduledGame("m6", team("Virginia", 3), team("Wright St", 14)),
           scheduledGame("m7", team("Kentucky", 7), team("Santa Clara", 10)),
           scheduledGame("m8", team("Iowa State", 2), team("Tennessee St", 15)),
