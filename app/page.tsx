@@ -11,12 +11,6 @@ import {
   findCompressedGameById,
   getInProgressCompressedGameIds,
 } from "@/lib/bracket-to-compressed";
-import { SIMULATE_TEMPORARILY_DISABLED } from "@/lib/simulate-gate";
-
-const SIM_UI_ENABLED =
-  !SIMULATE_TEMPORARILY_DISABLED &&
-  (process.env.NODE_ENV === "development" ||
-    process.env.NEXT_PUBLIC_SIMULATE_ENABLED === "true");
 
 function inferSimPhase(b: BracketType | SimulatedBracket): string {
   if (!b.firstFour.every((g) => g.winner)) return "First Four";
@@ -35,56 +29,6 @@ function inferSimPhase(b: BracketType | SimulatedBracket): string {
   if (!b.finalFour.every((g) => g.winner)) return "Final Four";
   if (!b.championship?.winner) return "Championship";
   return "Complete";
-}
-
-function ProductionAside({
-  bracket,
-  selectedGameId,
-}: {
-  bracket: BracketType | SimulatedBracket;
-  selectedGameId: string | null;
-}) {
-  const selectedGame = useMemo(
-    () => findCompressedGameById(bracket, selectedGameId),
-    [bracket, selectedGameId]
-  );
-  return (
-    <aside
-      className="flex w-full shrink-0 flex-col overflow-hidden border-t border-[#e8e8e8] bg-white max-h-[50dvh] md:max-h-[42dvh] lg:max-h-none lg:w-[28%] lg:min-w-0 lg:border-l lg:border-t-0"
-      aria-label="Matchup details"
-    >
-      <div className="shrink-0 px-6 pb-6 pt-6 lg:px-8 lg:pb-8 lg:pt-8">
-        <h1 className="text-[22px] font-bold tracking-tight text-[#1a1a1a]">
-          March Madness AI
-        </h1>
-        <p className="mt-3 text-[14px] leading-relaxed text-[#5c5c5c]">
-          This project simulates the full bracket with an AI analyst (First Four
-          through the championship) using KenPom-style stats, seed history, and
-          matchup context. The live sim isn&apos;t hosted here—the implementation
-          is in the repo if you want to run it yourself.
-        </p>
-        <a
-          href="https://github.com/leerob/march-arena"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-5 flex items-center justify-center gap-2 rounded-lg bg-[#c8102e] px-5 py-3.5 text-[15px] font-semibold text-white shadow-sm transition hover:bg-[#a50d25]"
-        >
-          View the code
-        </a>
-        <p className="mt-3 text-[12px] leading-relaxed text-[#8a8a8a]">
-          You will need to bring your own API key to run the simulation locally
-          (see repo README).
-        </p>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden border-t border-[#eee]">
-        <MatchupStatsPanel
-          game={selectedGame}
-          variant="panel"
-          includeBracketRoundNotes
-        />
-      </div>
-    </aside>
-  );
 }
 
 function LocalSimHome() {
@@ -257,7 +201,7 @@ function LocalSimHome() {
                   />
                 </svg>
               )}
-              {starting ? "Starting…" : "Start simulation"}
+              {starting ? "Starting…" : "Run simulation"}
             </button>
             <p className="text-[12px] text-[#8a8a8a]">
               Runs the full tournament in one pass (many games in parallel per
@@ -313,28 +257,5 @@ function LocalSimHome() {
 }
 
 export default function Home() {
-  const [bracket] = useState<BracketType | SimulatedBracket>(BRACKET_2026);
-  const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
-  const onSelectGame = useCallback((game: Game) => setSelectedGameId(game.id), []);
-
-  if (SIM_UI_ENABLED) {
-    return <LocalSimHome />;
-  }
-
-  return (
-    <div className="flex h-[calc(100dvh-3rem)] flex-col overflow-hidden bg-[#ececec] lg:flex-row relative">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:w-[72%] lg:shrink-0">
-        <div className="min-h-0 flex-1 overflow-auto bg-[#ececec]">
-          <div className="min-w-max p-3 pb-8">
-            <CompressedBracket
-              bracket={bracket}
-              selectedGameId={selectedGameId}
-              onSelectGame={onSelectGame}
-            />
-          </div>
-        </div>
-      </div>
-      <ProductionAside bracket={bracket} selectedGameId={selectedGameId} />
-    </div>
-  );
+  return <LocalSimHome />;
 }

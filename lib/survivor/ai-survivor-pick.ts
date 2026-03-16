@@ -1,7 +1,6 @@
 import { generateText } from "ai";
 import { MODEL } from "../ai-pick";
 import type { Team } from "../bracket-data";
-import { ensembleWinProbability } from "../win-probability";
 import { generateMatchupAnalysis } from "../win-probability";
 import type { TournamentDay } from "./tournament-days";
 import type { DayRanking, TeamDayRanking } from "./survivor-strategy";
@@ -36,9 +35,7 @@ function parseSurvivorPick(text: string): SurvivorPickResponse {
 }
 
 function describeTeamCompact(team: Team): string {
-  const parts: string[] = [
-    `${team.name} (#${team.seed} seed)`,
-  ];
+  const parts: string[] = [`${team.name} (#${team.seed} seed)`];
   if (team.conference) parts.push(team.conference);
   if (team.stats) {
     parts.push(
@@ -49,7 +46,14 @@ function describeTeamCompact(team: Team): string {
   return parts.join(" | ");
 }
 
-export function buildSurvivorPickPrompt(
+/**
+ * Build a prompt grounded in bracket simulation results.
+ * The AI's job is no longer to predict who wins — the simulation already did that
+ * using the full analysis pipeline (KenPom, historical seed data, geographic advantage,
+ * upset calibration, tournament context). The AI now decides which simulation winner
+ * to allocate as the survivor pick for this day.
+ */
+export function buildSimDrivenSurvivorPrompt(
   day: TournamentDay,
   ranking: DayRanking,
   usedTeams: string[],
@@ -57,12 +61,11 @@ export function buildSurvivorPickPrompt(
   remainingDays: number,
   rejectedPicks?: string[]
 ): string {
+  const availableEntries = ranking.teams.filter(
+    (t) => !usedTeams.includes(t.team.name)
+  );
   const availableNames = [
-    ...new Set(
-      ranking.teams
-        .filter((t) => !usedTeams.includes(t.team.name))
-        .map((t) => t.team.name)
-    ),
+    ...new Set(availableEntries.map((t) => t.team.name)),
   ];
 
   let prompt = `You are an elite March Madness survivor pool strategist. `;
@@ -70,9 +73,14 @@ export function buildSurvivorPickPrompt(
   prompt += `If your team wins, you advance. If they lose, you're eliminated. `;
   prompt += `Each team can only be used ONCE across all 10 days.\n\n`;
 
+  prompt += `A full bracket simulation has already been completed using deep analysis `;
+  prompt += `(KenPom efficiency metrics, historical seed matchup data, geographic/venue advantage, `;
+  prompt += `tournament context, upset calibration, and matchup-specific factors). `;
+  prompt += `The winners shown below are the simulation's predictions. `;
+  prompt += `Your job is to decide which winning team to ALLOCATE as your survivor pick for today.\n\n`;
+
   prompt += `=== DAY ${day.day} — ${ranking.roundName} (${day.date}) ===\n\n`;
 
-  // Put the constraint front and center so the AI sees it before any matchup data
   prompt += `*** YOUR PICK MUST BE ONE OF THESE EXACT NAMES: ${availableNames.join(", ")} ***\n`;
   prompt += `Any other team name will be rejected.\n\n`;
 
@@ -82,7 +90,7 @@ export function buildSurvivorPickPrompt(
   }
 
   if (ranking.isCombinedPool) {
-    prompt += `NOTE: Days 7 & 8 (Elite 8) share a combined team pool. You can pick from games on either day.\n\n`;
+    prompt += `NOTE: Days 7 & 8 (Elite 8) share a combined team pool. You can pick from winners on either day.\n\n`;
   }
 
   prompt += `REMAINING DAYS AFTER THIS PICK: ${remainingDays - 1}\n\n`;
@@ -90,8 +98,7 @@ export function buildSurvivorPickPrompt(
   if (previousPicks.length > 0) {
     prompt += `YOUR PREVIOUS PICKS (already used — CANNOT pick again):\n`;
     for (const pick of previousPicks) {
-      const result = pick.winProb >= 0.5 ? "likely win" : "risky";
-      prompt += `- Day ${pick.day}: ${pick.team.name} (#${pick.team.seed}) vs ${pick.opponent.name} — ${Math.round(pick.winProb * 100)}% win prob (${result})\n`;
+      prompt += `- Day ${pick.day}: ${pick.team.name} (#${pick.team.seed}) vs ${pick.opponent.name} — ${Math.round(pick.winProb * 100)}% win prob\n`;
     }
     prompt += `\n`;
   }
@@ -100,37 +107,31 @@ export function buildSurvivorPickPrompt(
     prompt += `TEAMS ALREADY USED (unavailable): ${usedTeams.join(", ")}\n\n`;
   }
 
-  prompt += `AVAILABLE MATCHUPS TODAY:\n`;
+  prompt += `SIMULATION WINNERS TODAY (only winners are available):\n`;
   prompt += `${"─".repeat(70)}\n`;
 
   const seen = new Set<string>();
-  const matchups: Array<{ t1: TeamDayRanking; t2: TeamDayRanking }> = [];
 
   for (const entry of ranking.teams) {
-    const key = [entry.team.name, entry.opponent.name].sort().join(" vs ");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    if (usedTeams.includes(entry.team.name) && usedTeams.includes(entry.opponent.name)) continue;
-    const opponent = ranking.teams.find(
-      (t) => t.team.name === entry.opponent.name && t.gameId === entry.gameId
-    );
-    if (opponent) matchups.push({ t1: entry, t2: opponent });
-  }
+    if (seen.has(entry.gameId)) continue;
+    seen.add(entry.gameId);
 
-  for (const { t1, t2 } of matchups) {
-    const t1Available = !usedTeams.includes(t1.team.name);
-    const t2Available = !usedTeams.includes(t2.team.name);
+    const isAvailable = !usedTeams.includes(entry.team.name);
 
-    prompt += `\nGame: ${t1.team.name} vs ${t2.team.name}\n`;
-    prompt += `  ${describeTeamCompact(t1.team)}${t1Available ? "" : " [UNAVAILABLE - already used]"}\n`;
-    prompt += `  ${describeTeamCompact(t2.team)}${t2Available ? "" : " [UNAVAILABLE - already used]"}\n`;
-    prompt += `  Win Prob: ${t1.team.name} ${Math.round(t1.winProb * 100)}% — ${t2.team.name} ${Math.round(t2.winProb * 100)}%\n`;
-    prompt += `  Future Value: ${t1.team.name} ${(t1.futureValue * 100).toFixed(0)}/100 — ${t2.team.name} ${(t2.futureValue * 100).toFixed(0)}/100\n`;
-    prompt += `  Pick Score: ${t1.team.name} ${(t1.pickScore * 100).toFixed(1)} — ${t2.team.name} ${(t2.pickScore * 100).toFixed(1)}\n`;
+    prompt += `\nGame: ${entry.team.name} defeated ${entry.opponent.name}\n`;
+    prompt += `  Winner: ${describeTeamCompact(entry.team)}${isAvailable ? "" : " [UNAVAILABLE - already used]"}\n`;
+    prompt += `  Defeated: ${describeTeamCompact(entry.opponent)}\n`;
+    prompt += `  Win Prob: ${Math.round(entry.winProb * 100)}%\n`;
+    prompt += `  Future Value: ${(entry.futureValue * 100).toFixed(0)}/100 (higher = team advances further in simulation, more valuable to save)\n`;
+    prompt += `  Pick Score: ${(entry.pickScore * 100).toFixed(1)} (win prob minus future value penalty)\n`;
 
-    const analysis = generateMatchupAnalysis(t1.team, t2.team);
+    if (entry.simReasoning) {
+      prompt += `  Simulation Reasoning: "${entry.simReasoning}"\n`;
+    }
+
+    const analysis = generateMatchupAnalysis(entry.team, entry.opponent);
     if (analysis) {
-      const shortAnalysis = analysis.split("\n").slice(0, 5).join("\n  ");
+      const shortAnalysis = analysis.split("\n").slice(0, 4).join("\n  ");
       prompt += `  ${shortAnalysis}\n`;
     }
   }
@@ -139,12 +140,13 @@ export function buildSurvivorPickPrompt(
 
   prompt += `STRATEGY CONSIDERATIONS:\n`;
   prompt += `- PRIORITY #1: Pick a team with the highest probability of winning TODAY. Survival is everything.\n`;
-  prompt += `- PRIORITY #2: Save strong, versatile teams for later rounds when options shrink dramatically.\n`;
-  prompt += `  - Days 7-8 (Elite 8): Only 4 games combined. Teams that can reach E8 are premium assets.\n`;
-  prompt += `  - Day 9 (Final Four): Only 2 games. You MUST have a viable pick.\n`;
-  prompt += `  - Day 10 (Championship): Only 1 game with 2 teams. The most constrained.\n`;
-  prompt += `- Don't "waste" a 1-seed on a day when a solid 3-seed has an equally high win probability.\n`;
-  prompt += `- In early rounds (Days 1-2), there are many safe picks — use mid-tier favorites (3-6 seeds vs 11-14 seeds) to conserve top seeds.\n`;
+  prompt += `- PRIORITY #2: Save teams that advance deep in the simulation for later, more constrained days.\n`;
+  prompt += `  - Days 7-8 (Elite 8): Only 4 winners combined. Teams that reached E8 are premium assets.\n`;
+  prompt += `  - Day 9 (Final Four): Only 2 winners. You MUST have a viable pick.\n`;
+  prompt += `  - Day 10 (Championship): Only 1 winner. The most constrained day.\n`;
+  prompt += `- Don't "waste" a dominant 1-seed on a day when a solid 3-seed has an equally high win probability.\n`;
+  prompt += `- In early rounds (Days 1-2), there are many safe winners — use mid-tier favorites to conserve top seeds.\n`;
+  prompt += `- HIGH FUTURE VALUE teams are projected to win deep into the tournament — burning them early limits your options later.\n`;
 
   if (remainingDays <= 3) {
     prompt += `\nLATE TOURNAMENT WARNING: Only ${remainingDays} days remain. Options are very limited. Prioritize win probability above all else.\n`;
@@ -152,7 +154,7 @@ export function buildSurvivorPickPrompt(
 
   prompt += `\nYour pick MUST be one of these exact team names: ${availableNames.join(", ")}\n`;
   prompt += `Respond with ONLY a JSON object — no extra text, no markdown fences:\n`;
-  prompt += `{"team": "<exact team name from the list above>", "reasoning": "2-3 sentences explaining your pick like a survivor pool expert on a podcast"}\n`;
+  prompt += `{"team": "<exact team name from the list above>", "reasoning": "2-3 sentences explaining your allocation strategy like a survivor pool expert on a podcast"}\n`;
 
   return prompt;
 }
@@ -168,7 +170,6 @@ function findMatchingEntry(
 ): TeamDayRanking | null {
   const normalized = normalizeTeamName(pick);
 
-  // Exact match
   const exact = ranking.teams.find(
     (t) =>
       normalizeTeamName(t.team.name) === normalized &&
@@ -176,7 +177,6 @@ function findMatchingEntry(
   );
   if (exact) return exact;
 
-  // Fuzzy: one name contains the other
   const fuzzy = ranking.teams.find(
     (t) =>
       !usedTeams.includes(t.team.name) &&
@@ -194,7 +194,7 @@ export async function makeAISurvivorPick(
   usedTeams: string[],
   previousPicks: AISurvivorPick[],
   remainingDays: number
-): Promise<AISurvivorPick> {
+): Promise<AISurvivorPick | null> {
   console.log(`\n${"=".repeat(60)}`);
   console.log(`SURVIVOR DAY ${day.day}: ${ranking.roundName} (${day.date})`);
   console.log(`${"=".repeat(60)}`);
@@ -206,14 +206,20 @@ export async function makeAISurvivorPick(
         .map((t) => t.team.name)
     ),
   ];
-  console.log(`Available teams: ${availableNames.join(", ")}`);
+
+  if (availableNames.length === 0) {
+    console.log("No available winners — survivor pool is over.");
+    return null;
+  }
+
+  console.log(`Available winners: ${availableNames.join(", ")}`);
 
   const MAX_RETRIES = 3;
   let lastError: unknown;
   const rejectedPicks: string[] = [];
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const prompt = buildSurvivorPickPrompt(
+    const prompt = buildSimDrivenSurvivorPrompt(
       day,
       ranking,
       usedTeams,
@@ -235,7 +241,7 @@ export async function makeAISurvivorPick(
       if (!matchedEntry) {
         rejectedPicks.push(pick.team);
         throw new Error(
-          `AI picked "${pick.team}" which is not an available team for Day ${day.day}. Available: ${availableNames.join(", ")}`
+          `AI picked "${pick.team}" which is not an available winner for Day ${day.day}. Available: ${availableNames.join(", ")}`
         );
       }
 
@@ -265,7 +271,6 @@ export async function makeAISurvivorPick(
     }
   }
 
-  // Fallback: pick the highest-pickScore available team
   console.warn(`All AI attempts failed for Day ${day.day}, using fallback`);
   const fallback = ranking.teams.find(
     (t) => !usedTeams.includes(t.team.name)
@@ -282,6 +287,6 @@ export async function makeAISurvivorPick(
     team: fallback.team,
     opponent: fallback.opponent,
     winProb: fallback.winProb,
-    reasoning: `[Fallback] Picking ${fallback.team.name} as the highest-ranked available option with ${Math.round(fallback.winProb * 100)}% win probability.`,
+    reasoning: `[Fallback] Picking ${fallback.team.name} as the highest-ranked available winner with ${Math.round(fallback.winProb * 100)}% win probability.`,
   };
 }

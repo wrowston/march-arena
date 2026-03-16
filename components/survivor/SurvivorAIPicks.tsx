@@ -13,8 +13,28 @@ interface AIDayPick {
   reasoning: string;
 }
 
+interface SimResult {
+  winner: { id: number; name: string; seed: number };
+  upsets: number;
+}
+
+interface EliminationInfo {
+  day: number;
+  roundName: string;
+  reason: string;
+}
+
 interface StreamEvent {
-  type: "thinking" | "pick" | "skip" | "error" | "done" | "fatal";
+  type:
+    | "simulating"
+    | "simulation_complete"
+    | "thinking"
+    | "pick"
+    | "skip"
+    | "eliminated"
+    | "error"
+    | "done"
+    | "fatal";
   day?: number;
   date?: string;
   roundName?: string;
@@ -22,6 +42,7 @@ interface StreamEvent {
   opponent?: AIDayPick["opponent"];
   winProb?: number;
   reasoning?: string;
+  reason?: string;
   error?: string;
   totalPicks?: number;
   picks?: Array<{
@@ -30,6 +51,8 @@ interface StreamEvent {
     seed: number;
     winProb: number;
   }>;
+  winner?: SimResult["winner"];
+  upsets?: number;
 }
 
 function TeamLogo({ teamId, name, size = 8 }: { teamId: number; name: string; size?: number }) {
@@ -130,6 +153,9 @@ export function SurvivorAIPicks() {
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [simulating, setSimulating] = useState(false);
+  const [simResult, setSimResult] = useState<SimResult | null>(null);
+  const [elimination, setElimination] = useState<EliminationInfo | null>(null);
 
   const runAIPicks = useCallback(async () => {
     setPicks([]);
@@ -137,6 +163,9 @@ export function SurvivorAIPicks() {
     setRunning(true);
     setDone(false);
     setError(null);
+    setSimulating(false);
+    setSimResult(null);
+    setElimination(null);
 
     try {
       const res = await fetch("/api/survivor/ai-picks", {
@@ -167,6 +196,18 @@ export function SurvivorAIPicks() {
           try {
             const event: StreamEvent = JSON.parse(line);
             switch (event.type) {
+              case "simulating":
+                setSimulating(true);
+                break;
+              case "simulation_complete":
+                setSimulating(false);
+                if (event.winner) {
+                  setSimResult({
+                    winner: event.winner,
+                    upsets: event.upsets ?? 0,
+                  });
+                }
+                break;
               case "thinking":
                 setThinkingDay({
                   day: event.day!,
@@ -187,6 +228,14 @@ export function SurvivorAIPicks() {
                     reasoning: event.reasoning!,
                   },
                 ]);
+                break;
+              case "eliminated":
+                setThinkingDay(null);
+                setElimination({
+                  day: event.day!,
+                  roundName: event.roundName ?? "",
+                  reason: event.reason ?? "No available teams remaining.",
+                });
                 break;
               case "done":
                 setDone(true);
@@ -241,7 +290,9 @@ export function SurvivorAIPicks() {
               <span className="h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
             )}
             {running
-              ? "AI is picking..."
+              ? simulating
+                ? "Simulating bracket..."
+                : "AI is picking..."
               : done
                 ? "Run again"
                 : "Run AI Survivor Picks"}
@@ -287,6 +338,42 @@ export function SurvivorAIPicks() {
         </div>
       )}
 
+      {/* Simulation status */}
+      {simulating && (
+        <div className="bg-white rounded-lg border border-[#dcdddf] overflow-hidden">
+          <div className="flex items-center gap-3 px-4 py-4">
+            <div className="h-5 w-5 rounded-full border-2 border-[#c8102e] border-t-transparent animate-spin shrink-0" />
+            <div>
+              <div className="text-[14px] font-semibold text-[#121213]">
+                Simulating full bracket&hellip;
+              </div>
+              <div className="text-[12px] text-[#6c6e6f] mt-0.5">
+                Running the same deep analysis used for bracket picks &mdash;
+                KenPom, historical matchups, geographic advantage, upset
+                calibration. This may take a few minutes.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {simResult && !simulating && (
+        <div className="bg-white rounded-lg border border-[#dcdddf] px-4 py-3">
+          <div className="text-[12px] font-medium text-[#6c6e6f]">
+            Bracket simulation complete &mdash; predicted champion:{" "}
+            <span className="font-bold text-[#121213]">
+              {simResult.winner.name}
+            </span>{" "}
+            (#{simResult.winner.seed} seed) with{" "}
+            <span className="font-bold text-[#121213]">
+              {simResult.upsets}
+            </span>{" "}
+            upset{simResult.upsets !== 1 ? "s" : ""}. Now selecting survivor
+            picks from simulation winners&hellip;
+          </div>
+        </div>
+      )}
+
       {/* Pick cards */}
       <div className="space-y-3">
         {picks.map((pick) => (
@@ -297,6 +384,32 @@ export function SurvivorAIPicks() {
             day={thinkingDay.day}
             roundName={thinkingDay.roundName}
           />
+        )}
+        {elimination && (
+          <div className="bg-white rounded-lg border border-amber-300 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-amber-200 bg-amber-50">
+              <div className="flex items-center justify-center w-7 h-7 rounded-full bg-amber-500 text-white text-[12px] font-bold shrink-0">
+                {elimination.day}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-semibold text-amber-900">
+                  Survivor Pool Over &mdash; Day {elimination.day}
+                </div>
+                <div className="text-[10px] text-amber-700">
+                  {elimination.roundName}
+                </div>
+              </div>
+            </div>
+            <div className="px-4 py-3">
+              <p className="text-[13px] text-amber-800">
+                {elimination.reason}
+              </p>
+              <p className="text-[12px] text-amber-600 mt-1.5">
+                Survived through {picks.length} of 10 days ({picks.length}{" "}
+                pick{picks.length !== 1 ? "s" : ""} made).
+              </p>
+            </div>
+          </div>
         )}
       </div>
 

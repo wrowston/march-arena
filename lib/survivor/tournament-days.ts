@@ -1,4 +1,4 @@
-import type { Bracket, Game, Team } from "../bracket-data";
+import type { Bracket, Game, SimulatedBracket, SimulatedGame, Team } from "../bracket-data";
 import { BRACKET_2026 } from "../bracket-data";
 
 export interface TournamentDay {
@@ -176,6 +176,78 @@ export function getPickableTeams(dayGames: DayGame[]): Team[] {
     teams.push(g.team1, g.team2);
   }
   return teams;
+}
+
+// ── Simulated bracket helpers ───────────────────────────────────────
+
+export interface SimDayGameResult {
+  gameId: string;
+  winner: Team;
+  loser: Team;
+  reasoning: string;
+}
+
+/**
+ * Resolve a game ID to a SimulatedGame from a SimulatedBracket.
+ * Returns null if the game ID is not found.
+ */
+export function resolveSimulatedGame(
+  simBracket: SimulatedBracket,
+  gameId: string
+): SimulatedGame | null {
+  if (gameId === "champ") return simBracket.championship;
+
+  if (gameId.startsWith("ff-")) {
+    return simBracket.finalFour.find((g) => g.id === gameId) ?? null;
+  }
+
+  const regionPrefix = gameId[0]!;
+  const regionMap: Record<string, string> = {
+    s: "SOUTH",
+    e: "EAST",
+    w: "WEST",
+    m: "MIDWEST",
+  };
+  const regionName = regionMap[regionPrefix];
+  if (!regionName) return null;
+
+  const region = simBracket.regions.find((r) => r.name === regionName);
+  if (!region) return null;
+
+  for (const round of region.rounds) {
+    const game = round.find((g) => g.id === gameId) as SimulatedGame | undefined;
+    if (game) return game;
+  }
+  return null;
+}
+
+/**
+ * Extract winners, losers, and reasoning for all games on a given day
+ * from a completed SimulatedBracket.
+ */
+export function getDaySimResults(
+  simBracket: SimulatedBracket,
+  day: TournamentDay
+): SimDayGameResult[] {
+  const ids = day.combinedPoolGameIds ?? day.gameIds;
+  const results: SimDayGameResult[] = [];
+
+  for (const gameId of ids) {
+    const game = resolveSimulatedGame(simBracket, gameId);
+    if (!game || !game.winner) continue;
+
+    const winner = game.winner === 1 ? game.team1 : game.team2;
+    const loser = game.winner === 1 ? game.team2 : game.team1;
+
+    results.push({
+      gameId: game.id,
+      winner,
+      loser,
+      reasoning: (game as SimulatedGame).reasoning ?? "",
+    });
+  }
+
+  return results;
 }
 
 /**
