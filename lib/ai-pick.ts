@@ -15,7 +15,7 @@ import { FIRST_FOUR_SLOTS } from "@/lib/simulation-shared";
 import { getMatchupKey, SEED_MATCHUP_STATS } from "@/lib/tournament-context";
 import { generateMatchupAnalysis } from "@/lib/win-probability";
 
-export const MODEL = anthropic("claude-4-5-haiku-latest");
+export const MODEL = anthropic("claude-haiku-4-5");
 
 export const ROUND_NAMES = [
   "Round of 64",

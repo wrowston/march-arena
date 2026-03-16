@@ -70,7 +70,7 @@ async function main() {
 
   console.log(`AI simulation batch (local, no workflow)`);
   console.log(`  Total runs:  ${count}`);
-  console.log(`  Model:       anthropic/claude-4-5-haiku-latest`);
+  console.log(`  Model:       anthropic/claude-haiku-4-5`);
   console.log(`  Redis:       ${process.env.REDIS_URL ? "configured" : "NOT SET — results won't persist"}`);
   console.log(`\nEach run simulates a full 67-game bracket via Claude Haiku.\n`);
 
