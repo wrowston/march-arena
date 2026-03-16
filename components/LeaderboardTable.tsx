@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import Image from "next/image";
 import { getTeamLogoUrl } from "@/lib/bracket-data";
 import type { LeaderboardData, TeamLeaderboardStats } from "@/lib/leaderboard";
 
@@ -309,12 +308,12 @@ function TeamLogo({ teamId, name }: { teamId: number; name: string }) {
   }
 
   return (
-    <Image
+    <img
       src={getTeamLogoUrl(teamId, 48)}
       alt={name}
-      width={24}
-      height={24}
-      className="object-contain"
+      width={48}
+      height={48}
+      className="h-full w-full object-contain"
       onError={() => setError(true)}
     />
   );

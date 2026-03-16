@@ -1,5 +1,7 @@
 // Static fun facts for March Madness organized by round and matchup type
 
+import { getMatchupKey } from "@/lib/tournament-context";
+
 export type RoundType =
   | "first-four"
   | "round-64"
@@ -223,9 +225,7 @@ export function getRoundFactsForBracketGameId(gameId: string): string[] {
  * Get fun facts for a specific seed matchup
  */
 export function getFactsForMatchup(seed1: number, seed2: number): string[] {
-  const higher = Math.min(seed1, seed2);
-  const lower = Math.max(seed1, seed2);
-  const key = `${higher}v${lower}`;
+  const key = getMatchupKey(seed1, seed2);
   return MATCHUP_FUN_FACTS[key] || [];
 }
 

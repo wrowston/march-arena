@@ -126,9 +126,17 @@ export const SEED_MATCHUP_STATS: Record<
   },
 };
 
-/** Get matchup key for seed pair (e.g. "5v12", "8v9") */
+/** Get matchup key for seed pair (e.g. "5v12", "8v9"). Maps TBD seed 0 to paired line. */
 export function getMatchupKey(seed1: number, seed2: number): string {
-  const higher = Math.min(seed1, seed2);
-  const lower = Math.max(seed1, seed2);
+  let a = seed1;
+  let b = seed2;
+  if (seed1 === 0 && seed2 >= 1 && seed2 <= 16) a = 17 - seed2;
+  else if (seed2 === 0 && seed1 >= 1 && seed1 <= 16) b = 17 - seed1;
+  else if (seed1 === 0 && seed2 === 0) {
+    a = 16;
+    b = 16;
+  }
+  const higher = Math.min(a, b);
+  const lower = Math.max(a, b);
   return `${higher}v${lower}`;
 }
