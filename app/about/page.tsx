@@ -218,7 +218,7 @@ export default function AboutPage() {
         </Section>
 
         {/* What People Are Saying */}
-        <Section title="What People Are Saying">
+        <Section title="Other Tweets">
           <div className="grid gap-4 sm:grid-cols-2 not-prose">
             <Tweet id="2033356869889396923" />
             <Tweet id="2033351062212555031" />

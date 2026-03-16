@@ -1,7 +1,6 @@
 import { checkRateLimit } from "@vercel/firewall";
 import { after } from "next/server";
-import { start } from "workflow/api";
-import { simulateBracket } from "@/workflows/simulate-bracket";
+import { simulateBracket } from "@/lib/simulate-bracket";
 import { BRACKET_2026 } from "@/lib/bracket-data";
 import type { SimulatedBracket } from "@/lib/bracket-data";
 import { saveSimulationResults } from "@/lib/leaderboard";
@@ -42,18 +41,21 @@ export async function POST(request: Request) {
   } catch {}
   const stream = body.stream ?? true;
 
-  const run = await start(simulateBracket, [BRACKET_2026]);
+  const { readable, writable } = new TransformStream<string, string>();
+  const writer = writable.getWriter();
+
+  const resultPromise = simulateBracket(BRACKET_2026, writer);
 
   if (stream) {
     after(async () => {
       try {
-        const result = await run.returnValue;
+        const result = await resultPromise;
         await trySaveResults(result);
       } catch (e) {
-        console.error("Leaderboard save after streamed workflow:", e);
+        console.error("Leaderboard save after streamed simulation:", e);
       }
     });
-    return new Response(run.readable, {
+    return new Response(readable, {
       headers: {
         "Content-Type": "application/x-ndjson",
         "Transfer-Encoding": "chunked",
@@ -61,7 +63,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const result = await run.returnValue;
+  const result = await resultPromise;
   await trySaveResults(result);
   return Response.json({ message: "Simulation complete", result });
 }
