@@ -19,7 +19,7 @@ const openrouter = createOpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-export const MODEL_ID = "x-ai/grok-4.1-fastu";
+export const MODEL_ID = "x-ai/grok-4.1-fast";
 export const MODEL = openrouter(MODEL_ID);
 
 export const ROUND_NAMES = [
@@ -841,7 +841,7 @@ export async function simulateBracketLocally(
     )
   );
 
-  // 5. Final Four (2026 NCAA): East(1) vs South(0), West(2) vs Midwest(3)
+  // 5. Final Four: East(1) vs South(0), West(2) vs Midwest(3)
   const finalFourGames: Game[] = [
     {
       id: "ff-east-south",
