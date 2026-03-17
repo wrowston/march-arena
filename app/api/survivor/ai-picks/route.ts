@@ -179,6 +179,11 @@ export async function POST(request: Request) {
             },
             winProb: pick.winProb,
             reasoning: pick.reasoning,
+            dayGames: gameResults.map((g) => ({
+              gameId: g.gameId,
+              winner: { id: g.winner.id, name: g.winner.name, seed: g.winner.seed },
+              loser: { id: g.loser.id, name: g.loser.name, seed: g.loser.seed },
+            })),
           });
         } catch (e) {
           await emit({

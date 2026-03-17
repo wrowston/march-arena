@@ -4,6 +4,12 @@ import { useState, useCallback } from "react";
 import { useModel } from "@/components/ModelContext";
 import { getTeamLogoUrl } from "@/lib/bracket-data";
 
+interface DayGameInfo {
+  gameId: string;
+  winner: { id: number; name: string; seed: number };
+  loser: { id: number; name: string; seed: number };
+}
+
 interface AIDayPick {
   day: number;
   date: string;
@@ -12,6 +18,7 @@ interface AIDayPick {
   opponent: { id: number; name: string; seed: number };
   winProb: number;
   reasoning: string;
+  dayGames?: DayGameInfo[];
 }
 
 interface SimResult {
@@ -56,6 +63,7 @@ interface StreamEvent {
   }>;
   winner?: SimResult["winner"];
   upsets?: number;
+  dayGames?: DayGameInfo[];
 }
 
 function TeamLogo({ teamId, name, size = 8 }: { teamId: number; name: string; size?: number }) {
@@ -79,6 +87,70 @@ function TeamLogo({ teamId, name, size = 8 }: { teamId: number; name: string; si
       className="h-full w-full object-contain"
       onError={() => setError(true)}
     />
+  );
+}
+
+function DayGamesSection({ games, pickedTeamName }: { games: DayGameInfo[]; pickedTeamName: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (games.length === 0) return null;
+
+  return (
+    <div className="border-t border-[#f0f0f0]">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-2 w-full px-4 py-2.5 text-left hover:bg-[#fafafa] transition-colors"
+      >
+        <svg
+          className={`w-3 h-3 text-[#9a9c9e] shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2.5}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+        <span className="text-[11px] font-medium text-[#9a9c9e]">
+          All games this day ({games.length})
+        </span>
+      </button>
+      {expanded && (
+        <div className="px-4 pb-3 space-y-1.5">
+          {games.map((game) => {
+            const isPicked = game.winner.name === pickedTeamName;
+            return (
+              <div
+                key={game.gameId}
+                className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[12px] ${
+                  isPicked
+                    ? "bg-[#f0fdf4] border border-green-200"
+                    : "bg-[#fafafa] border border-[#f0f0f0]"
+                }`}
+              >
+                <div className="w-5 h-5 shrink-0">
+                  <TeamLogo teamId={game.winner.id} name={game.winner.name} size={5} />
+                </div>
+                <div className="flex items-center gap-1 min-w-0 flex-1">
+                  <span className={`font-semibold ${isPicked ? "text-green-800" : "text-[#121213]"}`}>
+                    {game.winner.name}
+                  </span>
+                  <span className="text-[10px] text-[#9a9c9e]">#{game.winner.seed}</span>
+                  <span className="text-[10px] text-[#c0c1c3] mx-0.5">def.</span>
+                  <span className="text-[#6c6e6f]">{game.loser.name}</span>
+                  <span className="text-[10px] text-[#9a9c9e]">#{game.loser.seed}</span>
+                </div>
+                {isPicked && (
+                  <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-green-700 bg-green-100 rounded px-1.5 py-0.5">
+                    Pick
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -125,6 +197,9 @@ function PickCard({ pick }: { pick: AIDayPick }) {
           &ldquo;{pick.reasoning}&rdquo;
         </div>
       </div>
+      {pick.dayGames && pick.dayGames.length > 0 && (
+        <DayGamesSection games={pick.dayGames} pickedTeamName={pick.team.name} />
+      )}
     </div>
   );
 }
@@ -237,6 +312,7 @@ export function SurvivorAIPicks() {
                     opponent: event.opponent!,
                     winProb: event.winProb!,
                     reasoning: event.reasoning!,
+                    dayGames: event.dayGames,
                   },
                 ]);
                 break;

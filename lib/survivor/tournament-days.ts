@@ -28,8 +28,10 @@ export interface DayResults {
 /**
  * 10 tournament days for survivor pool.
  *
- * Day 1-2: R64 split by region pairs (South/East on Thu, West/Midwest on Fri)
- * Day 3-4: R32 split by region pairs
+ * Day 1-2: R64 split by pod site (Thu: Greenville/OKC/Portland/Buffalo,
+ *          Fri: Tampa/Philadelphia/San Diego/St. Louis). Games from all 4
+ *          regions appear on BOTH days because each region plays at 2 pods.
+ * Day 3-4: R32 at the same pod sites (Sat for Thu pods, Sun for Fri pods)
  * Day 5-6: Sweet 16 split (South/West on Thu, East/Midwest on Fri)
  * Day 7-8: Elite 8 (combined pool — can pick from either day)
  * Day 9: Final Four
@@ -41,8 +43,14 @@ export const TOURNAMENT_DAYS: TournamentDay[] = [
     date: "March 19",
     roundName: "Round of 64 — Day 1",
     gameIds: [
-      "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8",
-      "e1", "e2", "e3", "e4", "e5", "e6", "e7", "e8",
+      // Greenville: East top + South mid
+      "e1", "e2", "s5", "s6",
+      // OKC: South top-mid + South bottom
+      "s3", "s4", "s7", "s8",
+      // Portland: West mid
+      "w3", "w4", "w5", "w6",
+      // Buffalo: East mid + Midwest top
+      "e5", "e6", "m1", "m2",
     ],
   },
   {
@@ -50,21 +58,45 @@ export const TOURNAMENT_DAYS: TournamentDay[] = [
     date: "March 20",
     roundName: "Round of 64 — Day 2",
     gameIds: [
-      "w1", "w2", "w3", "w4", "w5", "w6", "w7", "w8",
-      "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8",
+      // Tampa: South top + Midwest mid-top
+      "s1", "s2", "m3", "m4",
+      // Philadelphia: East bottom + Midwest mid
+      "e7", "e8", "m5", "m6",
+      // San Diego: West top + East mid
+      "w1", "w2", "e3", "e4",
+      // St. Louis: Midwest bottom + West bottom
+      "m7", "m8", "w7", "w8",
     ],
   },
   {
     day: 3,
     date: "March 21",
     roundName: "Round of 32 — Day 1",
-    gameIds: ["s9", "s10", "s11", "s12", "e9", "e10", "e11", "e12"],
+    gameIds: [
+      // Greenville: e9 (e1/e2 winners), s11 (s5/s6 winners)
+      "e9", "s11",
+      // OKC: s10 (s3/s4 winners), s12 (s7/s8 winners)
+      "s10", "s12",
+      // Portland: w10 (w3/w4 winners), w11 (w5/w6 winners)
+      "w10", "w11",
+      // Buffalo: e11 (e5/e6 winners), m9 (m1/m2 winners)
+      "e11", "m9",
+    ],
   },
   {
     day: 4,
     date: "March 22",
     roundName: "Round of 32 — Day 2",
-    gameIds: ["w9", "w10", "w11", "w12", "m9", "m10", "m11", "m12"],
+    gameIds: [
+      // Tampa: s9 (s1/s2 winners), m10 (m3/m4 winners)
+      "s9", "m10",
+      // Philadelphia: e12 (e7/e8 winners), m11 (m5/m6 winners)
+      "e12", "m11",
+      // San Diego: w9 (w1/w2 winners), e10 (e3/e4 winners)
+      "w9", "e10",
+      // St. Louis: m12 (m7/m8 winners), w12 (w7/w8 winners)
+      "m12", "w12",
+    ],
   },
   {
     day: 5,

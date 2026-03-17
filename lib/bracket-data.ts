@@ -443,57 +443,71 @@ export const SCHEDULE_2026: TournamentSchedule = {
  * remaining pods filled to the eight host cities.
  */
 export const FIRST_SECOND_VENUE_INDEX_BY_GAME_ID_2026: Record<string, number> = {
-  // South — Tampa / Oklahoma City
+  // South — Tampa(4) / OKC(2) / Greenville(1)
+  // Tampa: Florida(1v16), Clemson/Iowa(8v9)
+  // OKC: Vanderbilt/McNeese(5v12), Nebraska/Troy(4v13), StMary's/TAMU(7v10), Houston/Idaho(2v15)
+  // Greenville: UNC/VCU(6v11), Illinois/Penn(3v14)
   s1: 4,
   s2: 4,
-  s3: 4,
-  s4: 4,
-  s5: 2,
-  s6: 2,
+  s3: 2,
+  s4: 2,
+  s5: 1,
+  s6: 1,
   s7: 2,
   s8: 2,
   s9: 4,
-  s10: 4,
-  s11: 2,
+  s10: 2,
+  s11: 1,
   s12: 2,
-  // East — Greenville / Philadelphia
+  // East — Greenville(1) / Buffalo(0) / San Diego(6) / Philadelphia(5)
+  // Greenville: Duke(1v16), OhioSt/TCU(8v9)
+  // Buffalo: Louisville/USF(6v11), MichiganSt/NDSU(3v14)
+  // San Diego: StJohn's/NIowa(5v12), Kansas/CalBaptist(4v13)
+  // Philadelphia: UCLA/UCF(7v10), UConn/Furman(2v15)
   e1: 1,
   e2: 1,
-  e3: 1,
-  e4: 1,
-  e5: 5,
-  e6: 5,
+  e3: 6,
+  e4: 6,
+  e5: 0,
+  e6: 0,
   e7: 5,
   e8: 5,
   e9: 1,
-  e10: 1,
-  e11: 5,
+  e10: 6,
+  e11: 0,
   e12: 5,
-  // West — Portland / San Diego (Arizona pod @ San Diego per NCAA 2026)
+  // West — San Diego(6) / Portland(3) / St. Louis(7)
+  // San Diego: Arizona(1v16), Villanova/UtahSt(8v9)
+  // Portland: Wisconsin/HighPoint(5v12), Arkansas/Hawaii(4v13), BYU/Texas(6v11), Gonzaga/KennesawSt(3v14)
+  // St. Louis: Miami/Missouri(7v10), Purdue/Queens(2v15)
   w1: 6,
   w2: 6,
   w3: 3,
   w4: 3,
   w5: 3,
   w6: 3,
-  w7: 6,
-  w8: 6,
+  w7: 7,
+  w8: 7,
   w9: 6,
-  w10: 6,
+  w10: 3,
   w11: 3,
-  w12: 3,
-  // Midwest — Buffalo / St. Louis
+  w12: 7,
+  // Midwest — Buffalo(0) / Tampa(4) / Philadelphia(5) / St. Louis(7)
+  // Buffalo: Michigan(1v16), Georgia/StLouis(8v9)
+  // Tampa: TexasTech/Akron(5v12), Alabama/Hofstra(4v13)
+  // Philadelphia: Tennessee/SMU(6v11), Virginia/WrightSt(3v14)
+  // St. Louis: Kentucky/SantaClara(7v10), IowaSt/TennesseeSt(2v15)
   m1: 0,
   m2: 0,
-  m3: 0,
-  m4: 0,
-  m5: 7,
-  m6: 7,
+  m3: 4,
+  m4: 4,
+  m5: 5,
+  m6: 5,
   m7: 7,
   m8: 7,
   m9: 0,
-  m10: 0,
-  m11: 7,
+  m10: 4,
+  m11: 5,
   m12: 7,
 };
 
