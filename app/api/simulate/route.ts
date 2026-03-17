@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     });
   }
 
-  let body: { stream?: boolean } = {};
+  let body: { stream?: boolean; modelId?: string } = {};
   try {
     body = await request.json();
   } catch {}
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
   const { readable, writable } = new TransformStream<string, string>();
   const writer = writable.getWriter();
 
-  const resultPromise = simulateBracket(BRACKET_2026, writer);
+  const resultPromise = simulateBracket(BRACKET_2026, writer, body.modelId);
 
   if (stream) {
     after(async () => {

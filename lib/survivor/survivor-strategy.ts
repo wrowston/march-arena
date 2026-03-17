@@ -37,6 +37,32 @@ export interface OptimalAssignment {
 }
 
 /**
+ * Dynamic future value weight: early rounds penalize using top teams heavily,
+ * late rounds focus purely on survival.
+ */
+function getFutureValueWeight(dayNumber: number): number {
+  if (dayNumber <= 2) return 0.55;
+  if (dayNumber <= 4) return 0.45;
+  if (dayNumber <= 6) return 0.25;
+  if (dayNumber <= 8) return 0.10;
+  return 0;
+}
+
+/**
+ * Direct penalty for using 1-2 seeds on early days.
+ * Top seeds are scarce resources (only 4 of each) needed for late rounds
+ * where only 1-4 winners are available per day.
+ */
+function getTopSeedPenalty(seed: number, dayNumber: number): number {
+  if (dayNumber >= 7) return 0;
+  const dayFactor = (7 - dayNumber) / 6;
+  if (seed === 1) return 0.20 * dayFactor;
+  if (seed === 2) return 0.12 * dayFactor;
+  if (seed === 3) return 0.05 * dayFactor;
+  return 0;
+}
+
+/**
  * For each winning team in the simulation, compute the latest day they appear.
  * Teams that win deeper into the tournament are more valuable to save for later.
  */
@@ -104,7 +130,14 @@ function computeOptimalAssignmentFromSim(
 
     if (available.length === 0) continue;
 
-    available.sort((a, b) => b.winProb - a.winProb);
+    available.sort((a, b) => {
+      if (available.length <= 3) {
+        return b.winProb - a.winProb;
+      }
+      const scoreA = a.winProb - getTopSeedPenalty(a.team.seed, dayNum);
+      const scoreB = b.winProb - getTopSeedPenalty(b.team.seed, dayNum);
+      return scoreB - scoreA;
+    });
     const best = available[0]!;
     usedTeams.add(best.team.name);
     assignments.push({ day: dayNum, team: best.team, winProb: best.winProb });
@@ -135,8 +168,9 @@ export function computeSurvivorRankingsFromSim(
     for (const r of results) {
       const winProb = ensembleWinProbability(r.winner, r.loser);
       const fv = futureValues.get(r.winner.name) ?? 0;
-      const fvWeight = 0.3;
-      const pickScore = winProb - fv * fvWeight;
+      const fvWeight = getFutureValueWeight(day.day);
+      const seedPenalty = getTopSeedPenalty(r.winner.seed, day.day);
+      const pickScore = winProb - fv * fvWeight - seedPenalty;
 
       teams.push({
         team: r.winner,
@@ -175,13 +209,14 @@ export function computeDayRankingFromResults(
   gameResults: SimDayGameResult[],
   day: TournamentDay,
 ): DayRanking {
-  const fvWeight = 0.3;
+  const fvWeight = getFutureValueWeight(day.day);
   const teams: TeamDayRanking[] = [];
 
   for (const r of gameResults) {
     const winProb = ensembleWinProbability(r.winner, r.loser);
     const seedProxy = (17 - r.winner.seed) / 16;
-    const pickScore = winProb - seedProxy * fvWeight;
+    const seedPenalty = getTopSeedPenalty(r.winner.seed, day.day);
+    const pickScore = winProb - seedProxy * fvWeight - seedPenalty;
 
     teams.push({
       team: r.winner,

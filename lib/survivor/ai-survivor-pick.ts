@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { MODEL } from "../ai-pick";
+import { resolveModel } from "../ai-pick";
 import type { Team } from "../bracket-data";
 import { generateMatchupAnalysis } from "../win-probability";
 import type { TournamentDay } from "./tournament-days";
@@ -107,6 +107,28 @@ export function buildSimDrivenSurvivorPrompt(
     prompt += `TEAMS ALREADY USED (unavailable): ${usedTeams.join(", ")}\n\n`;
   }
 
+  const usedSeedCounts = previousPicks.reduce(
+    (acc, p) => {
+      if (p.team.seed === 1) acc.s1++;
+      else if (p.team.seed === 2) acc.s2++;
+      return acc;
+    },
+    { s1: 0, s2: 0 }
+  );
+  const constrainedDaysRemaining = Math.max(
+    0,
+    [7, 8, 9, 10].filter((d) => d >= day.day).length
+  );
+
+  prompt += `SEED BUDGET:\n`;
+  prompt += `- 1-seeds used: ${usedSeedCounts.s1}/4 | 2-seeds used: ${usedSeedCounts.s2}/4\n`;
+  prompt += `- 1-seeds remaining: ${4 - usedSeedCounts.s1} | 2-seeds remaining: ${4 - usedSeedCounts.s2}\n`;
+  prompt += `- Days remaining: ${remainingDays} | Constrained days ahead (≤4 options): ${constrainedDaysRemaining}\n`;
+  if (constrainedDaysRemaining > 0 && (4 - usedSeedCounts.s1) + (4 - usedSeedCounts.s2) <= constrainedDaysRemaining) {
+    prompt += `- WARNING: You need every remaining top seed for late rounds. Do NOT burn them now.\n`;
+  }
+  prompt += `\n`;
+
   prompt += `SIMULATION WINNERS TODAY (only winners are available):\n`;
   prompt += `${"─".repeat(70)}\n`;
 
@@ -118,12 +140,13 @@ export function buildSimDrivenSurvivorPrompt(
 
     const isAvailable = !usedTeams.includes(entry.team.name);
 
-    prompt += `\nGame: ${entry.team.name} defeated ${entry.opponent.name}\n`;
+    const optimalTag = entry.isOptimalPick && isAvailable ? " ★ RECOMMENDED ★" : "";
+    prompt += `\nGame: ${entry.team.name} defeated ${entry.opponent.name}${optimalTag}\n`;
     prompt += `  Winner: ${describeTeamCompact(entry.team)}${isAvailable ? "" : " [UNAVAILABLE - already used]"}\n`;
     prompt += `  Defeated: ${describeTeamCompact(entry.opponent)}\n`;
     prompt += `  Win Prob: ${Math.round(entry.winProb * 100)}%\n`;
     prompt += `  Future Value: ${(entry.futureValue * 100).toFixed(0)}/100 (higher = team advances further in simulation, more valuable to save)\n`;
-    prompt += `  Pick Score: ${(entry.pickScore * 100).toFixed(1)} (win prob minus future value penalty)\n`;
+    prompt += `  Pick Score: ${(entry.pickScore * 100).toFixed(1)} (accounts for win prob, future value, and seed conservation)\n`;
 
     if (entry.simReasoning) {
       prompt += `  Simulation Reasoning: "${entry.simReasoning}"\n`;
@@ -138,19 +161,32 @@ export function buildSimDrivenSurvivorPrompt(
 
   prompt += `\n${"─".repeat(70)}\n\n`;
 
-  prompt += `STRATEGY CONSIDERATIONS:\n`;
-  prompt += `- PRIORITY #1: Pick a team with the highest probability of winning TODAY. Survival is everything.\n`;
-  prompt += `- PRIORITY #2: Save teams that advance deep in the simulation for later, more constrained days.\n`;
-  prompt += `  - Days 7-8 (Elite 8): Only 4 winners combined. Teams that reached E8 are premium assets.\n`;
-  prompt += `  - Day 9 (Final Four): Only 2 winners. You MUST have a viable pick.\n`;
-  prompt += `  - Day 10 (Championship): Only 1 winner. The most constrained day.\n`;
-  prompt += `- Don't "waste" a dominant 1-seed on a day when a solid 3-seed has an equally high win probability.\n`;
-  prompt += `- In early rounds (Days 1-2), there are many safe winners — use mid-tier favorites to conserve top seeds.\n`;
-  prompt += `- HIGH FUTURE VALUE teams are projected to win deep into the tournament — burning them early limits your options later.\n`;
+  prompt += `STRATEGY RULES:\n`;
+  prompt += `The survivor pool has 10 days but only 4 one-seeds and 4 two-seeds exist in the entire tournament.\n`;
+  prompt += `Days 7-10 (Elite 8 / Final Four / Championship) have only 1-4 winners to pick from.\n`;
+  prompt += `If you burn top seeds early, you will RUN OUT of teams and LOSE the pool.\n\n`;
 
-  if (remainingDays <= 3) {
-    prompt += `\nLATE TOURNAMENT WARNING: Only ${remainingDays} days remain. Options are very limited. Prioritize win probability above all else.\n`;
+  if (day.day <= 2) {
+    prompt += `TODAY IS DAY ${day.day} (Round of 64) — ~16 winners available.\n`;
+    prompt += `- DO NOT pick a 1-seed or 2-seed. There are plenty of 3-7 seed alternatives.\n`;
+    prompt += `- Pick the highest win-probability team among seeds 3-7. Even 65-75% is fine.\n`;
+    prompt += `- Only use a 1/2-seed if literally no other team has ≥60% win probability.\n`;
+    prompt += `- Prefer teams with LOWER future value (they won't advance far — use them now).\n`;
+  } else if (day.day <= 4) {
+    prompt += `TODAY IS DAY ${day.day} (Round of 32) — ~8 winners available.\n`;
+    prompt += `- Strongly prefer 3-5 seeds. Avoid 1-seeds; 2-seeds only if 15%+ better than alternatives.\n`;
+    prompt += `- You still have enough options to save your top seeds for Days 7-10.\n`;
+  } else if (day.day <= 6) {
+    prompt += `TODAY IS DAY ${day.day} (Sweet 16) — 4 winners available.\n`;
+    prompt += `- 2-3 seeds are appropriate picks now. Save 1-seeds for Days 7-10 if a 2/3-seed has ≥60% win prob.\n`;
+  } else {
+    prompt += `TODAY IS DAY ${day.day} — OPTIONS ARE LIMITED.\n`;
+    prompt += `- Pick the team with the HIGHEST win probability. Survival trumps all other considerations.\n`;
+    prompt += `- These are the constrained rounds you saved your top seeds for.\n`;
   }
+
+  prompt += `\nAMONG ELIGIBLE TEAMS: prefer higher "Pick Score" (already penalizes using top seeds early).\n`;
+  prompt += `HIGH FUTURE VALUE = team advances deep in the simulation. Burning them early limits options later.\n`;
 
   prompt += `\nYour pick MUST be one of these exact team names: ${availableNames.join(", ")}\n`;
   prompt += `Respond with ONLY a JSON object — no extra text, no markdown fences:\n`;
@@ -193,7 +229,8 @@ export async function makeAISurvivorPick(
   ranking: DayRanking,
   usedTeams: string[],
   previousPicks: AISurvivorPick[],
-  remainingDays: number
+  remainingDays: number,
+  modelId?: string
 ): Promise<AISurvivorPick | null> {
   console.log(`\n${"=".repeat(60)}`);
   console.log(`SURVIVOR DAY ${day.day}: ${ranking.roundName} (${day.date})`);
@@ -230,9 +267,9 @@ export async function makeAISurvivorPick(
 
     try {
       const result = await generateText({
-        model: MODEL,
+        model: resolveModel(modelId),
         prompt,
-        temperature: attempt === 1 ? 0.5 : 0.3,
+        temperature: 0.7,
       });
 
       const pick = parseSurvivorPick(result.text);

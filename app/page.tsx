@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import Confetti from "react-confetti";
 import { CompressedBracket } from "@/components/compressed-bracket/CompressedBracket";
 import { MatchupStatsPanel } from "@/components/MatchupStatsPanel";
+import { useModel } from "@/components/ModelContext";
 import { useSimulation } from "@/components/SimulationControls";
 import { BRACKET_2026 } from "@/lib/bracket-data";
 import type { Bracket as BracketType, Game, SimulatedBracket } from "@/lib/bracket-data";
@@ -32,6 +33,7 @@ function inferSimPhase(b: BracketType | SimulatedBracket): string {
 }
 
 function LocalSimHome() {
+  const { modelId } = useModel();
   const [bracket, setBracket] = useState<BracketType | SimulatedBracket>(BRACKET_2026);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [simFocusManaged, setSimFocusManaged] = useState(false);
@@ -88,8 +90,8 @@ function LocalSimHome() {
     setSelectedGameId(null);
     setShowConfetti(false);
     prevCompleteRef.current = false;
-    runSimulation();
-  }, [runSimulation]);
+    runSimulation(modelId);
+  }, [runSimulation, modelId]);
 
   useEffect(() => {
     if (!running) setStarting(false);

@@ -64,6 +64,11 @@ export async function POST(request: Request) {
     });
   }
 
+  let body: { modelId?: string } = {};
+  try {
+    body = await request.json();
+  } catch {}
+
   const { readable, writable } = new TransformStream<string, string>();
   const writer = writable.getWriter();
 
@@ -137,7 +142,8 @@ export async function POST(request: Request) {
             ranking,
             usedTeams,
             picks,
-            remainingDays
+            remainingDays,
+            body.modelId
           );
 
           if (!pick) {
@@ -197,7 +203,7 @@ export async function POST(request: Request) {
           .then(() => emit({ type: "round_complete", round: roundLabel }))
           .then(() => processSurvivorDays(dayNumbers, allResults));
       },
-    });
+    }, body.modelId);
 
     // Wait for any survivor picks still in flight from the last callback
     await survivorChain;

@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { ModelProvider } from "@/components/ModelContext";
+import { ModelPicker } from "@/components/ModelPicker";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -57,7 +59,8 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-x-hidden`}
       >
-        <nav className="border-b border-[#dcdddf] bg-white">
+        <ModelProvider>
+          <nav className="border-b border-[#dcdddf] bg-white">
           <div className="max-w-[1440px] mx-auto px-4 flex items-center justify-between h-12">
             <Link
               href="/"
@@ -99,10 +102,13 @@ export default function RootLayout({
               >
                 About
               </Link>
+              <div className="h-4 w-px bg-[#dcdddf]" />
+              <ModelPicker />
             </div>
           </div>
-        </nav>
-        {children}
+          </nav>
+          {children}
+        </ModelProvider>
       </body>
     </html>
   );

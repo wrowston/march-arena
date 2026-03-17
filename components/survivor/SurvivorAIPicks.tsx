@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useModel } from "@/components/ModelContext";
 import { getTeamLogoUrl } from "@/lib/bracket-data";
 
 interface AIDayPick {
@@ -147,6 +148,7 @@ function ThinkingCard({ day, roundName }: { day: number; roundName: string }) {
 }
 
 export function SurvivorAIPicks() {
+  const { modelId } = useModel();
   const [picks, setPicks] = useState<AIDayPick[]>([]);
   const [thinkingDay, setThinkingDay] = useState<{
     day: number;
@@ -175,6 +177,7 @@ export function SurvivorAIPicks() {
       const res = await fetch("/api/survivor/ai-picks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId }),
       });
 
       if (!res.ok) {
@@ -267,7 +270,7 @@ export function SurvivorAIPicks() {
     } finally {
       setRunning(false);
     }
-  }, []);
+  }, [modelId]);
 
   const overallProb =
     picks.length > 0

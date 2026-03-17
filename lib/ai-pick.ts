@@ -19,9 +19,14 @@ const openrouter = createOpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-// export const MODEL_ID = "x-ai/grok-4.1-fast";
-export const MODEL_ID = "google/gemini-3.1-flash-lite-preview";
+import { DEFAULT_MODEL_ID } from "@/lib/models";
+
+export const MODEL_ID = DEFAULT_MODEL_ID;
 export const MODEL = openrouter(MODEL_ID);
+
+export function resolveModel(modelId?: string) {
+  return modelId ? openrouter(modelId) : MODEL;
+}
 
 export const ROUND_NAMES = [
   "Round of 64",
@@ -632,7 +637,8 @@ export function updateTournamentContext(
 
 export async function simulateGameWithAI(
   game: Game,
-  context?: GameContext
+  context?: GameContext,
+  modelId?: string
 ): Promise<SimulatedGame> {
   const prompt = buildEnhancedPrompt(game, context ?? {});
 
@@ -648,7 +654,7 @@ export async function simulateGameWithAI(
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const result = await generateText({
-        model: MODEL,
+        model: resolveModel(modelId),
         prompt,
         temperature: 0.7,
       });
@@ -690,7 +696,8 @@ export interface SimulationCallbacks {
 
 export async function simulateBracketLocally(
   bracket: Bracket,
-  callbacks?: SimulationCallbacks
+  callbacks?: SimulationCallbacks,
+  modelId?: string
 ): Promise<SimulatedBracket> {
   const cumulativeResults = new Map<string, SimulatedGame>();
   const tournamentContext: TournamentContext = {
@@ -712,7 +719,7 @@ export async function simulateBracketLocally(
   for (let i = 0; i < bracket.firstFour.length; i += SIM_GAME_CONCURRENCY) {
     const chunk = bracket.firstFour.slice(i, i + SIM_GAME_CONCURRENCY);
     const chunkRes = await Promise.all(
-      chunk.map((game) => simulateGameWithAI(game, firstFourContext))
+      chunk.map((game) => simulateGameWithAI(game, firstFourContext, modelId))
     );
     firstFourResults.push(...chunkRes);
   }
@@ -818,7 +825,7 @@ export async function simulateBracketLocally(
     for (let i = 0; i < jobs.length; i += SIM_GAME_CONCURRENCY) {
       const chunk = jobs.slice(i, i + SIM_GAME_CONCURRENCY);
       const results = await Promise.all(
-        chunk.map((j) => simulateGameWithAI(j.game, j.context))
+        chunk.map((j) => simulateGameWithAI(j.game, j.context, modelId))
       );
       chunk.forEach((job, idx) => {
         updateTournamentContext(
@@ -880,7 +887,7 @@ export async function simulateBracketLocally(
 
   const finalFourResults: SimulatedGame[] = [];
   for (const game of finalFourGames) {
-    const result = await simulateGameWithAI(game, finalFourContext);
+    const result = await simulateGameWithAI(game, finalFourContext, modelId);
     updateTournamentContext(tournamentContext, game, result, "Final Four");
     finalFourResults.push(result);
     cumulativeResults.set(game.id, result);
@@ -903,7 +910,8 @@ export async function simulateBracketLocally(
 
   const championshipResult = await simulateGameWithAI(
     championshipGame,
-    championshipContext
+    championshipContext,
+    modelId
   );
   cumulativeResults.set("champ", championshipResult);
   callbacks?.onRoundComplete?.("National Championship", cumulativeResults);

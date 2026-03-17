@@ -10,14 +10,14 @@ export function useSimulation(
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function runSimulation() {
+  async function runSimulation(modelId?: string) {
     setRunning(true);
     setError(null);
     try {
       const res = await fetch("/api/simulate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stream: true }),
+        body: JSON.stringify({ stream: true, modelId }),
       });
 
       const contentType = res.headers.get("Content-Type") ?? "";

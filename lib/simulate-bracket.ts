@@ -46,6 +46,7 @@ async function emit(writer: WritableStreamDefaultWriter<string>, update: Simulat
 export async function simulateBracket(
   bracket: Bracket,
   writer: WritableStreamDefaultWriter<string>,
+  modelId?: string,
 ): Promise<SimulatedBracket> {
   const completedStages: SimulationStage[] = [];
   let tournamentContext: TournamentContext = {
@@ -75,6 +76,7 @@ export async function simulateBracket(
     [...completedStages],
     tournamentContext,
     SIM_GAME_CONCURRENCY,
+    modelId,
   );
   const firstFourResults = firstFourStepResult.results;
   tournamentContext = firstFourStepResult.tournamentContext;
@@ -160,7 +162,7 @@ export async function simulateBracket(
 
     const roundResult = await simulateRegionalRound(
       writer, roundIdx, jobs, regionDisplay, bracket, firstFourResults,
-      stage, [...completedStages], tournamentContext, SIM_GAME_CONCURRENCY,
+      stage, [...completedStages], tournamentContext, SIM_GAME_CONCURRENCY, modelId,
     );
     regionDisplay = roundResult.regionDisplay;
     tournamentContext = roundResult.tournamentContext;
@@ -206,6 +208,7 @@ export async function simulateBracket(
     firstFourResults,
     [...completedStages],
     tournamentContext,
+    modelId,
   );
 
   completedStages.push("finals");
@@ -255,6 +258,7 @@ async function simulateFirstFourRound(
   completedStages: SimulationStage[],
   tournamentContext: TournamentContext,
   concurrency: number,
+  modelId?: string,
 ): Promise<{
   results: SimulatedGame[];
   tournamentContext: TournamentContext;
@@ -281,7 +285,7 @@ async function simulateFirstFourRound(
 
     const chunkRes = await Promise.all(
       chunk.map((game) =>
-        simulateGameWithAI(game, { ...baseContext, tournamentContext: ctx })
+        simulateGameWithAI(game, { ...baseContext, tournamentContext: ctx }, modelId)
       )
     );
 
@@ -319,6 +323,7 @@ async function simulateRegionalRound(
   completedStages: SimulationStage[],
   tournamentContext: TournamentContext,
   concurrency: number,
+  modelId?: string,
 ): Promise<{
   regionDisplay: Game[][][];
   tournamentContext: TournamentContext;
@@ -353,7 +358,7 @@ async function simulateRegionalRound(
 
     const results = await Promise.all(
       chunk.map((j) =>
-        simulateGameWithAI(j.game, { ...j.context, tournamentContext: ctx })
+        simulateGameWithAI(j.game, { ...j.context, tournamentContext: ctx }, modelId)
       )
     );
 
@@ -391,6 +396,7 @@ async function simulateFinalsRound(
   firstFourResults: SimulatedGame[],
   completedStages: SimulationStage[],
   tournamentContext: TournamentContext,
+  modelId?: string,
 ): Promise<{
   finalFourResults: SimulatedGame[];
   championship: SimulatedGame;
@@ -426,7 +432,7 @@ async function simulateFinalsRound(
     const res = await simulateGameWithAI(finalFourGames[fi], {
       ...finalFourBaseContext,
       tournamentContext: ctx,
-    });
+    }, modelId);
     finalFourResults.push(res);
     updateTournamentContext(ctx, finalFourGames[fi], res, "Final Four");
 
@@ -460,7 +466,7 @@ async function simulateFinalsRound(
   const championshipResult = await simulateGameWithAI(championshipGame, {
     ...championshipBaseContext,
     tournamentContext: ctx,
-  });
+  }, modelId);
   const winner = getWinner(championshipGame, championshipResult.winner!);
 
   return {
