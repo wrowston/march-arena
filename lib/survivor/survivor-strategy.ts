@@ -3,6 +3,7 @@ import { ensembleWinProbability } from "../win-probability";
 import {
   TOURNAMENT_DAYS,
   getDaySimResults,
+  type SimDayGameResult,
   type TournamentDay,
 } from "./tournament-days";
 
@@ -162,6 +163,48 @@ export function computeSurvivorRankingsFromSim(
   }
 
   return rankings;
+}
+
+/**
+ * Compute a DayRanking for a single day from known game results.
+ * Used in the pipelined flow where the full SimulatedBracket isn't available yet.
+ * Future value is approximated by seed: lower seeds (stronger teams) are assumed
+ * more likely to advance deep and are thus more valuable to save for later days.
+ */
+export function computeDayRankingFromResults(
+  gameResults: SimDayGameResult[],
+  day: TournamentDay,
+): DayRanking {
+  const fvWeight = 0.3;
+  const teams: TeamDayRanking[] = [];
+
+  for (const r of gameResults) {
+    const winProb = ensembleWinProbability(r.winner, r.loser);
+    const seedProxy = (17 - r.winner.seed) / 16;
+    const pickScore = winProb - seedProxy * fvWeight;
+
+    teams.push({
+      team: r.winner,
+      opponent: r.loser,
+      gameId: r.gameId,
+      winProb,
+      futureValue: seedProxy,
+      pickScore,
+      isOptimalPick: false,
+      simReasoning: r.reasoning,
+    });
+  }
+
+  teams.sort((a, b) => b.pickScore - a.pickScore);
+
+  return {
+    day: day.day,
+    date: day.date,
+    roundName: day.roundName,
+    isCombinedPool: !!day.combinedPoolGameIds,
+    teams,
+    gamesResolved: gameResults.length > 0,
+  };
 }
 
 export function computeOverallSurvivalProbability(

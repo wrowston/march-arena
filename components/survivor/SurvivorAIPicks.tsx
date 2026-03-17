@@ -27,6 +27,7 @@ interface EliminationInfo {
 interface StreamEvent {
   type:
     | "simulating"
+    | "round_complete"
     | "simulation_complete"
     | "thinking"
     | "pick"
@@ -37,6 +38,7 @@ interface StreamEvent {
     | "fatal";
   day?: number;
   date?: string;
+  round?: string;
   roundName?: string;
   team?: AIDayPick["team"];
   opponent?: AIDayPick["opponent"];
@@ -154,6 +156,7 @@ export function SurvivorAIPicks() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [simulating, setSimulating] = useState(false);
+  const [simRound, setSimRound] = useState<string | null>(null);
   const [simResult, setSimResult] = useState<SimResult | null>(null);
   const [elimination, setElimination] = useState<EliminationInfo | null>(null);
 
@@ -164,6 +167,7 @@ export function SurvivorAIPicks() {
     setDone(false);
     setError(null);
     setSimulating(false);
+    setSimRound(null);
     setSimResult(null);
     setElimination(null);
 
@@ -199,8 +203,12 @@ export function SurvivorAIPicks() {
               case "simulating":
                 setSimulating(true);
                 break;
+              case "round_complete":
+                setSimRound(event.round ?? null);
+                break;
               case "simulation_complete":
                 setSimulating(false);
+                setSimRound(null);
                 if (event.winner) {
                   setSimResult({
                     winner: event.winner,
@@ -290,9 +298,9 @@ export function SurvivorAIPicks() {
               <span className="h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
             )}
             {running
-              ? simulating
+              ? simulating && picks.length === 0
                 ? "Simulating bracket..."
-                : "AI is picking..."
+                : "Running..."
               : done
                 ? "Run again"
                 : "Run AI Survivor Picks"}
@@ -341,16 +349,18 @@ export function SurvivorAIPicks() {
       {/* Simulation status */}
       {simulating && (
         <div className="bg-white rounded-lg border border-[#dcdddf] overflow-hidden">
-          <div className="flex items-center gap-3 px-4 py-4">
+          <div className="flex items-center gap-3 px-4 py-3">
             <div className="h-5 w-5 rounded-full border-2 border-[#c8102e] border-t-transparent animate-spin shrink-0" />
             <div>
               <div className="text-[14px] font-semibold text-[#121213]">
-                Simulating full bracket&hellip;
+                {simRound
+                  ? `Simulating bracket \u2014 ${simRound} complete`
+                  : "Simulating full bracket\u2026"}
               </div>
               <div className="text-[12px] text-[#6c6e6f] mt-0.5">
-                Running the same deep analysis used for bracket picks &mdash;
-                KenPom, historical matchups, geographic advantage, upset
-                calibration. This may take a few minutes.
+                {picks.length > 0
+                  ? "Survivor picks run in parallel as each round completes."
+                  : "KenPom, historical matchups, geographic advantage, upset calibration. Picks start as rounds complete."}
               </div>
             </div>
           </div>
@@ -368,8 +378,7 @@ export function SurvivorAIPicks() {
             <span className="font-bold text-[#121213]">
               {simResult.upsets}
             </span>{" "}
-            upset{simResult.upsets !== 1 ? "s" : ""}. Now selecting survivor
-            picks from simulation winners&hellip;
+            upset{simResult.upsets !== 1 ? "s" : ""}.
           </div>
         </div>
       )}

@@ -681,9 +681,18 @@ export async function simulateGameWithAI(
 
 // ── Full bracket simulation (no workflow) ───────────────────────────
 
+export interface SimulationCallbacks {
+  onRoundComplete?: (
+    roundLabel: string,
+    allResults: Map<string, SimulatedGame>
+  ) => void;
+}
+
 export async function simulateBracketLocally(
-  bracket: Bracket
+  bracket: Bracket,
+  callbacks?: SimulationCallbacks
 ): Promise<SimulatedBracket> {
+  const cumulativeResults = new Map<string, SimulatedGame>();
   const tournamentContext: TournamentContext = {
     upsets: [],
     eliminatedTeams: [],
@@ -832,6 +841,11 @@ export async function simulateBracketLocally(
         r.map((g) => ({ ...g, status: "final" as const }))
       )
     );
+
+    for (const [id, game] of resultsByGameId) {
+      cumulativeResults.set(id, game);
+    }
+    callbacks?.onRoundComplete?.(ROUND_NAMES[roundIdx], cumulativeResults);
   }
 
   // 4. Region winners
@@ -869,7 +883,9 @@ export async function simulateBracketLocally(
     const result = await simulateGameWithAI(game, finalFourContext);
     updateTournamentContext(tournamentContext, game, result, "Final Four");
     finalFourResults.push(result);
+    cumulativeResults.set(game.id, result);
   }
+  callbacks?.onRoundComplete?.("Final Four", cumulativeResults);
 
   // 6. Championship
   const championshipGame: Game = {
@@ -889,6 +905,9 @@ export async function simulateBracketLocally(
     championshipGame,
     championshipContext
   );
+  cumulativeResults.set("champ", championshipResult);
+  callbacks?.onRoundComplete?.("National Championship", cumulativeResults);
+
   const winner = getWinner(championshipGame, championshipResult.winner!);
 
   return {
